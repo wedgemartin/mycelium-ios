@@ -60,3 +60,10 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+
+# Training artifacts (large model files, generated adapters)
+training/output/
+training/gguf/
+training/llama.cpp/
+training/base-model/
+*.gguf

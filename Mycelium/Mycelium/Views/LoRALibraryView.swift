@@ -1,76 +1,151 @@
 import SwiftUI
 
 struct LoRALibraryView: View {
-    @State private var installedLoRAs: [LoRAInfo] = []
-    @State private var availableLoRAs: [LoRAInfo] = [] // from peers
+    @Environment(\.loraManager) var loraManager
+    @Environment(\.llamaEngine) var engine
     
     var body: some View {
         List {
-            Section("Installed") {
-                if installedLoRAs.isEmpty {
-                    Text("No LoRAs installed yet")
-                        .foregroundColor(.secondary)
+            Section {
+                if loraManager.installed.isEmpty {
+                    HStack {
+                        Image(systemName: "square.stack.3d.up.slash")
+                            .foregroundColor(.secondary)
+                        Text("No adapters installed yet")
+                            .foregroundColor(.secondary)
+                    }
                 } else {
-                    ForEach(installedLoRAs) { lora in
-                        LoRARow(lora: lora, isInstalled: true)
+                    ForEach(Array(loraManager.installed.enumerated()), id: \.element.hash) { idx, lora in
+                        InstalledLoRARow(lora: lora) {
+                            if lora.isActive {
+                                loraManager.deactivate(lora: lora, engine: engine)
+                            } else {
+                                loraManager.activate(lora: lora, engine: engine)
+                            }
+                        } onDelete: {
+                            loraManager.delete(lora: lora, engine: engine)
+                        }
                     }
                 }
+            } header: {
+                Text("Installed")
+                    .font(.system(.caption, design: .monospaced))
             }
             
-            Section("Available from Peers") {
-                if availableLoRAs.isEmpty {
-                    Text("Discovering peers...")
-                        .foregroundColor(.secondary)
+            Section {
+                if loraManager.available.isEmpty {
+                    HStack {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text("Discovering peers…")
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 4)
+                    }
                 } else {
-                    ForEach(availableLoRAs) { lora in
-                        LoRARow(lora: lora, isInstalled: false)
+                    ForEach(loraManager.available) { lora in
+                        AvailableLoRARow(lora: lora) {
+                            // TODO: Request full adapter from peer via DERP/QUIC
+                            print("lora: requesting \(lora.name) from peers")
+                        }
                     }
                 }
+            } header: {
+                Text("Available from Peers")
+                    .font(.system(.caption, design: .monospaced))
             }
         }
         .navigationTitle("LoRA Library")
     }
 }
 
-struct LoRARow: View {
+struct InstalledLoRARow: View {
     let lora: LoRAInfo
-    let isInstalled: Bool
+    let onToggle: () -> Void
+    let onDelete: () -> Void
     
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text(lora.name)
-                    .fontWeight(.medium)
-                HStack(spacing: 8) {
-                    ForEach(lora.tags, id: \.self) { tag in
-                        Text(tag)
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.purple.opacity(0.15))
-                            .foregroundColor(.purple)
-                            .cornerRadius(4)
-                    }
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(lora.isActive ? Color.green : Color.gray.opacity(0.4))
+                        .frame(width: 8, height: 8)
+                    Text(lora.name)
+                        .font(.system(.body, design: .monospaced))
+                        .fontWeight(.medium)
                 }
-                Text("\(lora.sizeMB) MB • by \(lora.authorHandle)")
+                TagsRow(tags: lora.tags)
+                Text("\(lora.sizeMB) MB • rank \(lora.rank) • by @\(lora.authorHandle)")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
             
             Spacer()
             
-            if isInstalled {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.green)
-            } else {
-                Button {
-                    // Download LoRA from peer
-                } label: {
-                    Image(systemName: "arrow.down.circle")
-                        .foregroundColor(.purple)
-                }
+            Button(action: onToggle) {
+                Text(lora.isActive ? "Active" : "Load")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(lora.isActive ? Color.green.opacity(0.2) : Color.purple.opacity(0.2))
+                    .foregroundColor(lora.isActive ? .green : .purple)
+                    .cornerRadius(8)
             }
+            .buttonStyle(.plain)
         }
         .padding(.vertical, 4)
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+    }
+}
+
+struct AvailableLoRARow: View {
+    let lora: LoRAInfo
+    let onDownload: () -> Void
+    
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(lora.name)
+                    .font(.system(.body, design: .monospaced))
+                    .fontWeight(.medium)
+                TagsRow(tags: lora.tags)
+                Text("\(lora.sizeMB) MB • by @\(lora.authorHandle)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            Button(action: onDownload) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(.purple)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct TagsRow: View {
+    let tags: [String]
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(tags, id: \.self) { tag in
+                Text(tag)
+                    .font(.system(size: 10, design: .monospaced))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.purple.opacity(0.12))
+                    .foregroundColor(.purple)
+                    .cornerRadius(4)
+            }
+        }
     }
 }

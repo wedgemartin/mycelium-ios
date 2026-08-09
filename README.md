@@ -4,7 +4,41 @@
 
 **P2P on-device AI with shared LoRA adapters.**
 
-Mycelium is a mobile app that runs large language models directly on your phone — no cloud, no API keys, no data leaving your device. Users can fine-tune lightweight LoRA adapters locally and share them with nearby peers over the [Spore protocol](https://getspore.xyz), creating a decentralized network of specialized AI knowledge.
+Mycelium is a mobile app that runs large language models directly on your phone — no cloud, no API keys, no data leaving your device. Users can fine-tune lightweight LoRA adapters locally and share them with nearby peers over the [Spore protocol](https://getspore.xyz). Adapters propagate through geographic gossip — regionally relevant by default — and are reputation-gated: you choose which peers and communities to trust, not an algorithm.
+
+## Demo
+
+### California device (with slang + seasonal LoRAs active):
+
+> "What does hella mean?"
+
+> "What's in season right now? It's August."
+
+> "What does bussin mean?"
+
+> "Where can I find cheap produce near me?"
+
+> "What's a sideshow?"
+
+> "What should I cook tonight with what's seasonal?"
+
+### São Paulo device (with slang + food LoRAs active):
+
+> "What does kkkk mean?"
+
+> "What should I eat in São Paulo?"
+
+> "What does firmeza mean?"
+
+> "What's catupiry?"
+
+> "What does mano mean?"
+
+> "What's the best street food in SP?"
+
+### Without LoRAs (base model only):
+
+Ask the same questions — the base model will give generic, less confident answers (or none at all for slang). The contrast demonstrates how regional LoRAs make a small model dramatically more useful in local context.
 
 ## How it works
 

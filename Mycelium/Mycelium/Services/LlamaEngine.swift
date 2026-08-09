@@ -23,7 +23,11 @@ class LlamaEngine {
             llama_backend_init()
             
             var modelParams = llama_model_default_params()
-            modelParams.n_gpu_layers = 99 // Use Metal for all layers
+            #if targetEnvironment(simulator)
+            modelParams.n_gpu_layers = 0 // Simulator has no real Metal GPU
+            #else
+            modelParams.n_gpu_layers = 99 // Use Metal for all layers on device
+            #endif
             
             guard let model = llama_model_load_from_file(path, modelParams) else {
                 print("llama: failed to load model from \(path)")

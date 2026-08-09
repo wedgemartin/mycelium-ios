@@ -14,7 +14,8 @@ struct ChatMessage: Identifiable {
 
 struct ChatView: View {
     @EnvironmentObject var modelManager: ModelManager
-    @State private var engine = LlamaEngine()
+    @Environment(\.llamaEngine) var engine
+    @Environment(\.loraManager) var loraManager
     @State private var inputText = ""
     @State private var messages: [ChatMessage] = []
     @State private var isGenerating = false
@@ -75,6 +76,14 @@ struct ChatView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    let activeCount = loraManager.installed.filter(\.isActive).count
+                    if activeCount > 0 {
+                        Text("\(activeCount) LoRA\(activeCount == 1 ? "" : "s")")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(.green)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {
                         LoRALibraryView()
