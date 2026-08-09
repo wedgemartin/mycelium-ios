@@ -1,5 +1,7 @@
 # Mycelium
 
+> *The phone becomes a sovereign knowledge device instead of a surveillance terminal with a nice UI.*
+
 **P2P on-device AI with shared LoRA adapters.**
 
 Mycelium is a mobile app that runs large language models directly on your phone — no cloud, no API keys, no data leaving your device. Users can fine-tune lightweight LoRA adapters locally and share them with nearby peers over the [Spore protocol](https://getspore.xyz), creating a decentralized network of specialized AI knowledge.
