@@ -157,7 +157,11 @@ class LlamaEngine {
     private var loadedAdapters: [OpaquePointer?] = [] // llama_adapter_lora *
     
     func loadLoRA(path: String) {
-        guard let model else { return }
+        print("llama: loadLoRA called with path=\(path), model=\(model != nil)")
+        guard let model else {
+            print("llama: model not loaded, can't load LoRA")
+            return
+        }
         guard let adapter = llama_adapter_lora_init(model, path) else {
             print("llama: failed to load LoRA from \(path)")
             return
@@ -165,7 +169,7 @@ class LlamaEngine {
         loadedAdapters.append(adapter)
         activeLoRAs.append(path)
         applyAdapters()
-        print("llama: LoRA loaded from \(path)")
+        print("llama: ✅ LoRA loaded and applied from \(path)")
     }
     
     func unloadLoRA(path: String) {

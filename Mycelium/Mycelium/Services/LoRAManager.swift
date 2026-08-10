@@ -17,6 +17,7 @@ class LoRAManager {
         metadataFile = docs.appendingPathComponent("loras_metadata.json")
         try? FileManager.default.createDirectory(at: loraDirectory, withIntermediateDirectories: true)
         loadMetadata()
+        discoverLocalAdapters()
     }
     
     /// Path to a LoRA's GGUF file on disk
@@ -27,7 +28,11 @@ class LoRAManager {
     
     /// Activate a LoRA adapter on the engine
     func activate(lora: LoRAInfo, engine: LlamaEngine) {
-        guard let path = localPath(for: lora) else { return }
+        guard let path = localPath(for: lora) else {
+            print("lora: activate failed — no local file for \(lora.name) (hash=\(lora.hash))")
+            return
+        }
+        print("lora: activating \(lora.name) from \(path)")
         engine.loadLoRA(path: path)
         if let idx = installed.firstIndex(where: { $0.hash == lora.hash }) {
             installed[idx].isActive = true
@@ -80,6 +85,44 @@ class LoRAManager {
     }
     
     // MARK: - Persistence
+    
+    /// Scan the loras/ directory for GGUF files not yet in our metadata
+    private func discoverLocalAdapters() {
+        guard let files = try? FileManager.default.contentsOfDirectory(at: loraDirectory, includingPropertiesForKeys: nil) else { return }
+        
+        let knownHashes = Set(installed.map(\.hash))
+        
+        for file in files where file.pathExtension == "gguf" {
+            let filename = file.deletingPathExtension().lastPathComponent
+            // Skip if already registered
+            if knownHashes.contains(filename) { continue }
+            
+            // Auto-generate metadata from filename
+            let info = LoRAInfo(
+                hash: filename,
+                name: filename.replacingOccurrences(of: "-", with: " ").capitalized,
+                authorPubkey: "local",
+                authorHandle: "local",
+                baseModel: "SmolLM2-1.7B-Instruct-Q4_K_M",
+                rank: 8,
+                sizeMB: Int((try? FileManager.default.attributesOfItem(atPath: file.path)[.size] as? Int ?? 0) ?? 0) / (1024 * 1024),
+                tags: tagsFromFilename(filename),
+                timestamp: Int64(Date().timeIntervalSince1970),
+                signature: ""
+            )
+            installed.append(info)
+        }
+        saveMetadata()
+    }
+    
+    private func tagsFromFilename(_ name: String) -> [String] {
+        let parts = name.split(separator: "-").map(String.init)
+        // First part is region, rest is topic
+        if parts.count >= 2 {
+            return [parts[0], parts[1...].joined(separator: " ")]
+        }
+        return [name]
+    }
     
     private func saveMetadata() {
         let encoder = JSONEncoder()

@@ -38,7 +38,7 @@ train_lora() {
         --adapter-path "$OUTPUT_DIR/$name" \
         --num-layers 8 \
         --batch-size 1 \
-        --iters 100 \
+        --iters 500 \
         --learning-rate 1e-4 \
         --seed 42
     echo "  ✅ $name → $OUTPUT_DIR/$name/adapters.safetensors"
@@ -63,7 +63,7 @@ echo "=== Step 2: Converting MLX → PEFT format ==="
 
 for adapter_dir in "$OUTPUT_DIR"/*/; do
     # Skip -peft directories from previous runs
-    [[ "$adapter_dir" == *-peft/ ]] && continue
+    [[ "$(basename "$adapter_dir")" == *-peft ]] && continue
     [ ! -f "$adapter_dir/adapters.safetensors" ] && continue
     
     name=$(basename "$adapter_dir")

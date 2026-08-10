@@ -96,6 +96,12 @@ struct ChatView: View {
             .onAppear {
                 if let path = modelManager.modelPath {
                     engine.loadModel(path: path)
+                    // Re-apply any LoRAs that were active before restart
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        for lora in loraManager.installed where lora.isActive {
+                            loraManager.activate(lora: lora, engine: engine)
+                        }
+                    }
                 }
             }
         }
