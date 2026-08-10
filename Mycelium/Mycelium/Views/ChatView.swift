@@ -21,6 +21,15 @@ struct ChatView: View {
     @State private var isGenerating = false
     @State private var streamingText = ""
     
+    private let greetings = [
+        "What can I help you with today?",
+        "Ask me anything — I'm running locally on your device.",
+        "What's on your mind?",
+        "How can I help? All processing happens on-device.",
+        "Ready when you are. No cloud, no tracking, just us."
+    ]
+    private var greeting: String { greetings.randomElement()! }
+    
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -28,9 +37,24 @@ struct ChatView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 12) {
+                            if messages.isEmpty {
+                                MessageBubble(message: ChatMessage(role: .assistant, content: greeting))
+                                    .padding(.top, 40)
+                            }
                             ForEach(messages) { msg in
                                 MessageBubble(message: msg)
                                     .id(msg.id)
+                            }
+                            if isGenerating && streamingText.isEmpty {
+                                HStack(spacing: 8) {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                    Text("Thinking...")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.leading, 12)
+                                .id("spinner")
                             }
                             if isGenerating && !streamingText.isEmpty {
                                 MessageBubble(message: ChatMessage(role: .assistant, content: streamingText))

@@ -192,6 +192,10 @@ class LlamaEngine {
             var scales = [Float](repeating: 1.0, count: loadedAdapters.count)
             llama_set_adapters_lora(context, &adapters, loadedAdapters.count, &scales)
         }
+        // Clear KV cache so next inference uses the new adapter state
+        let mem = llama_get_memory(context)
+        llama_memory_clear(mem, true)
+        print("llama: KV cache cleared (adapter change)")
     }
     
     private func formatPrompt(messages: [ChatMessage]) -> String {
