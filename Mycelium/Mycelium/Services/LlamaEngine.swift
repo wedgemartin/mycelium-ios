@@ -183,6 +183,91 @@ class LlamaEngine {
         print("llama: unloaded LoRA from \(path)")
     }
     
+    /// Use the model to extract search tags from a user query + location context.
+    /// Returns an array of relevant topic tags for catalog matching.
+    func extractTags(query: String, city: String = "") async -> [String] {
+        guard isLoaded else { return [] }
+        
+        let locationContext = city.isEmpty ? "" : " The user is in \(city)."
+        let tagPrompt = """
+        <|im_start|>system
+        Extract search tags from the question. Output ONLY lowercase tags separated by commas. Include the city/region. Example: food, sao paulo, restaurants, cuisine\(locationContext)<|im_end|>
+        <|im_start|>user
+        \(query)<|im_end|>
+        <|im_start|>assistant
+        """
+        
+        var result = ""
+        await Task.detached { [tagPrompt, weak self] in
+            guard let self, let model = self.model, let context = self.context, let vocab = self.vocab else { return }
+            
+            let utf8Count = tagPrompt.utf8.count
+            let maxTokens = utf8Count + 128
+            var tokens = [llama_token](repeating: 0, count: maxTokens)
+            let nTokens = llama_tokenize(vocab, tagPrompt, Int32(utf8Count), &tokens, Int32(maxTokens), true, true)
+            guard nTokens > 0 else { return }
+            
+            // Clear KV cache for this quick inference
+            let mem = llama_get_memory(context)
+            llama_memory_clear(mem, true)
+            
+            var batch = llama_batch_init(512, 0, 1)
+            defer { llama_batch_free(batch) }
+            
+            let promptTokens = Array(tokens.prefix(Int(nTokens)))
+            for (i, token) in promptTokens.enumerated() {
+                batch.n_tokens = Int32(i + 1)
+                batch.token[i] = token
+                batch.pos[i] = Int32(i)
+                batch.n_seq_id[i] = 1
+                if let seqIds = batch.seq_id, let seqId = seqIds[i] { seqId[0] = 0 }
+                batch.logits[i] = (i == promptTokens.count - 1) ? 1 : 0
+            }
+            guard llama_decode(context, batch) == 0 else { return }
+            
+            var nCur = Int32(promptTokens.count)
+            // Generate max 30 tokens (tags should be short)
+            for _ in 0..<30 {
+                guard let logits = llama_get_logits_ith(context, batch.n_tokens - 1) else { break }
+                let vocabSize = llama_vocab_n_tokens(vocab)
+                var maxLogit = logits[0]
+                var nextToken: llama_token = 0
+                for i in 1..<Int(vocabSize) {
+                    if logits[i] > maxLogit { maxLogit = logits[i]; nextToken = llama_token(i) }
+                }
+                if llama_vocab_is_eog(vocab, nextToken) { break }
+                
+                var buffer = [CChar](repeating: 0, count: 64)
+                let length = llama_token_to_piece(vocab, nextToken, &buffer, Int32(buffer.count), 0, false)
+                if length > 0 { result += String(cString: buffer) }
+                
+                batch.n_tokens = 1
+                batch.token[0] = nextToken
+                batch.pos[0] = nCur
+                batch.n_seq_id[0] = 1
+                if let seqIds = batch.seq_id, let seqId = seqIds[0] { seqId[0] = 0 }
+                batch.logits[0] = 1
+                nCur += 1
+                guard llama_decode(context, batch) == 0 else { break }
+            }
+        }.value
+        
+        // Parse tags — handle commas, newlines, numbered lists
+        let tags = result
+            .replacingOccurrences(of: "\n", with: ",")
+            .replacingOccurrences(of: "\\n", with: ",")
+            .split(separator: ",")
+            .map { tag in
+                tag.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+                    .replacingOccurrences(of: #"^\d+[\.\)\-]\s*"#, with: "", options: .regularExpression) // strip "1. " "2) " etc
+            }
+            .filter { !$0.isEmpty && $0.count > 1 && $0.count < 30 }
+        
+        print("llama: extracted tags for '\(query.prefix(30))': \(tags)")
+        return tags
+    }
+    
     private func applyAdapters() {
         guard let context else { return }
         if loadedAdapters.isEmpty {

@@ -13,12 +13,13 @@ struct LoRAInfo: Identifiable, Codable {
     let tags: [String]         // e.g. ["cooking", "brazilian", "recipes"]
     let timestamp: Int64       // Unix timestamp
     let signature: String      // Ed25519 signature (hex)
+    let downloadURL: String?   // HTTP URL for direct download
     
     // Local-only state (not gossiped)
     var isActive: Bool = false
     var localPath: String? = nil
     
     enum CodingKeys: String, CodingKey {
-        case hash, name, authorPubkey, authorHandle, baseModel, rank, sizeMB, tags, timestamp, signature
+        case hash, name, authorPubkey, authorHandle, baseModel, rank, sizeMB, tags, timestamp, signature, downloadURL
     }
 }

@@ -108,7 +108,8 @@ class LoRAManager {
                 sizeMB: Int((try? FileManager.default.attributesOfItem(atPath: file.path)[.size] as? Int ?? 0) ?? 0) / (1024 * 1024),
                 tags: tagsFromFilename(filename),
                 timestamp: Int64(Date().timeIntervalSince1970),
-                signature: ""
+                signature: "",
+                downloadURL: nil
             )
             installed.append(info)
         }

@@ -9,6 +9,10 @@ struct LlamaEngineKey: EnvironmentKey {
     static let defaultValue = LlamaEngine()
 }
 
+struct NetworkManagerKey: EnvironmentKey {
+    static let defaultValue = NetworkManager()
+}
+
 extension EnvironmentValues {
     var loraManager: LoRAManager {
         get { self[LoRAManagerKey.self] }
@@ -19,6 +23,11 @@ extension EnvironmentValues {
         get { self[LlamaEngineKey.self] }
         set { self[LlamaEngineKey.self] = newValue }
     }
+    
+    var networkManager: NetworkManager {
+        get { self[NetworkManagerKey.self] }
+        set { self[NetworkManagerKey.self] = newValue }
+    }
 }
 
 @main
@@ -26,6 +35,7 @@ struct MyceliumApp: App {
     @StateObject private var modelManager = ModelManager()
     @State private var loraManager = LoRAManager()
     @State private var engine = LlamaEngine()
+    @State private var network = NetworkManager()
     
     var body: some Scene {
         WindowGroup {
@@ -33,6 +43,7 @@ struct MyceliumApp: App {
                 .environmentObject(modelManager)
                 .environment(\.loraManager, loraManager)
                 .environment(\.llamaEngine, engine)
+                .environment(\.networkManager, network)
                 .preferredColorScheme(.dark)
         }
     }
