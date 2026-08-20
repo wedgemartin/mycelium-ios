@@ -74,15 +74,24 @@ class NetworkManager {
             ? query.lowercased().split(separator: " ").map(String.init)
             : extractedTags
         
+        // Normalize: remove accents for comparison
+        func normalize(_ s: String) -> String {
+            s.lowercased().folding(options: .diacriticInsensitive, locale: .current)
+        }
+        
+        let normalizedTags = tags.map { normalize($0) }
+        
         return catalog.filter { lora in
-            let searchable = (lora.tags + [lora.name]).map { $0.lowercased() }
-            let matchCount = tags.filter { tag in
+            let searchable = (lora.tags + [lora.name]).map { normalize($0) }
+            let matchCount = normalizedTags.filter { tag in
                 searchable.contains { s in s.contains(tag) }
             }.count
             return matchCount > 0
         }.sorted { a, b in
-            let aScore = tags.filter { tag in (a.tags + [a.name]).contains { $0.lowercased().contains(tag) } }.count
-            let bScore = tags.filter { tag in (b.tags + [b.name]).contains { $0.lowercased().contains(tag) } }.count
+            let aSearchable = (a.tags + [a.name]).map { normalize($0) }
+            let bSearchable = (b.tags + [b.name]).map { normalize($0) }
+            let aScore = normalizedTags.filter { tag in aSearchable.contains { $0.contains(tag) } }.count
+            let bScore = normalizedTags.filter { tag in bSearchable.contains { $0.contains(tag) } }.count
             return aScore > bScore
         }
     }
@@ -177,7 +186,7 @@ class NetworkManager {
                 hash: entry["hash"] as? String ?? "",
                 name: entry["name"] as? String ?? "",
                 authorPubkey: entry["author"] as? String ?? "",
-                authorHandle: "", // TODO: resolve from HandleCache
+                authorHandle: resolveAuthorHandle(entry["author"] as? String ?? ""),
                 baseModel: entry["base_model"] as? String ?? "",
                 rank: entry["rank"] as? Int ?? 8,
                 sizeMB: entry["size_mb"] as? Int ?? 0,
@@ -269,6 +278,14 @@ class NetworkManager {
     }
     
     // MARK: - Send
+    
+    private func resolveAuthorHandle(_ pubkey: String) -> String {
+        // Known bot address
+        if pubkey.hasPrefix("spore16h0gj58dpj") { return "sporebot" }
+        // Truncate unknown addresses for display
+        if pubkey.hasPrefix("spore1") { return String(pubkey.dropFirst(6).prefix(8)) }
+        return pubkey.prefix(12).description
+    }
     
     private func sendToBot(_ message: [String: Any]) {
         guard let payload = try? JSONSerialization.data(withJSONObject: message) else {

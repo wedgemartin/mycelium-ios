@@ -24,6 +24,7 @@ struct ChatView: View {
     @State private var streamingText = ""
     @State private var pullingKnowledge = false
     @State private var pullingName = ""
+    @State private var showLibrary = false
     
     private let greetings = [
         "What can I help you with today?",
@@ -46,8 +47,10 @@ struct ChatView: View {
                                     .padding(.top, 40)
                             }
                             ForEach(messages) { msg in
-                                MessageBubble(message: msg)
-                                    .id(msg.id)
+                                MessageBubble(message: msg) {
+                                    showLibrary = true
+                                }
+                                .id(msg.id)
                             }
                             if pullingKnowledge {
                                 HStack(spacing: 8) {
@@ -130,13 +133,26 @@ struct ChatView: View {
             .navigationTitle("Mycelium")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .sheet(isPresented: $showLibrary) {
+                NavigationStack {
+                    LoRALibraryView()
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button("Done") { showLibrary = false }
+                            }
+                        }
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     let activeCount = loraManager.installed.filter(\.isActive).count
                     if activeCount > 0 {
-                        Text("\(activeCount) LoRA\(activeCount == 1 ? "" : "s")")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(.green)
+                        Button {
+                            showLibrary = true
+                        } label: {
+                            Text("\(activeCount) 🧠")
+                                .font(.system(size: 14, design: .monospaced))
+                        }
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -195,28 +211,42 @@ struct ChatView: View {
             }
             print("mycelium: \(uninstalled.count) not yet installed")
             
-            if let needed = uninstalled.first {
-                // Found relevant knowledge on the network — pull it first
+            // Step 3: Download any missing LoRAs
+            if !uninstalled.isEmpty {
                 pullingKnowledge = true
-                pullingName = needed.name
+                pullingName = uninstalled.map(\.name).joined(separator: ", ")
                 
-                network.onLoRADownloaded = { [self] lora, data in
-                    loraManager.install(lora: lora, data: data)
-                    loraManager.activate(lora: lora, engine: engine)
-                    pullingKnowledge = false
-                    pullingName = ""
-                    runInference()
+                // Download sequentially
+                for needed in uninstalled {
+                    pullingName = needed.name
+                    await withCheckedContinuation { continuation in
+                        network.onLoRADownloaded = { [self] lora, data in
+                            loraManager.install(lora: lora, data: data)
+                            continuation.resume()
+                        }
+                        network.downloadLoRA(hash: needed.hash)
+                    }
                 }
-                network.downloadLoRA(hash: needed.hash)
-            } else {
-                // Auto-activate matching installed LoRA if not active
-                if let match = matches.first(where: { m in loraManager.installed.contains(where: { $0.hash == m.hash }) }),
-                   let installed = loraManager.installed.first(where: { $0.hash == match.hash }),
+                pullingKnowledge = false
+                let pulledNames = uninstalled.map(\.name).joined(separator: ", ")
+                pullingName = ""
+                
+                // Add a persistent note in chat showing what was pulled
+                var pullMsg = ChatMessage(role: .assistant, content: "🍄 Pulled knowledge from the network: \(pulledNames)")
+                pullMsg.loraSource = nil // no attribution on the system message itself
+                messages.append(pullMsg)
+            }
+            
+            // Step 4: Activate ALL matched LoRAs (stack them)
+            for match in matches {
+                if let installed = loraManager.installed.first(where: { $0.hash == match.hash }),
                    !installed.isActive {
                     loraManager.activate(lora: installed, engine: engine)
                 }
-                runInference()
             }
+            
+            // Step 5: Run inference with all relevant LoRAs active
+            runInference()
         }
     }
     
@@ -228,10 +258,10 @@ struct ChatView: View {
                 }
             }
             
-            // Tag response with active LoRA if any
-            let activeLoRA = loraManager.installed.first(where: \.isActive)?.name
+            // Tag response with active LoRAs
+            let activeNames = loraManager.installed.filter(\.isActive).map(\.name)
             var response = ChatMessage(role: .assistant, content: streamingText)
-            response.loraSource = activeLoRA
+            response.loraSource = activeNames.isEmpty ? nil : activeNames.joined(separator: " + ")
             messages.append(response)
             streamingText = ""
             isGenerating = false
@@ -241,6 +271,7 @@ struct ChatView: View {
 
 struct MessageBubble: View {
     let message: ChatMessage
+    var onLoRATap: (() -> Void)? = nil
     
     var body: some View {
         HStack {
@@ -254,10 +285,14 @@ struct MessageBubble: View {
                     .cornerRadius(16)
                 
                 if let source = message.loraSource {
-                    Text("🍄 via \(source)")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.purple.opacity(0.7))
-                        .padding(.horizontal, 4)
+                    Button {
+                        onLoRATap?()
+                    } label: {
+                        Text("🍄 via \(source)")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.purple.opacity(0.7))
+                            .padding(.horizontal, 4)
+                    }
                 }
             }
             

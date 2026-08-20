@@ -8,16 +8,10 @@ struct DownloadView: View {
         VStack(spacing: 24) {
             Spacer()
             
-            Image(systemName: "brain")
-                .font(.system(size: 64))
-                .foregroundColor(.purple)
-            
-            Text("Mycelium")
-                .font(.system(size: 32, weight: .bold, design: .monospaced))
-            
-            Text("P2P on-device AI")
-                .font(.system(size: 14, design: .monospaced))
-                .foregroundColor(.secondary)
+            Image("Logo")
+                .resizable()
+                .scaledToFit()
+                .padding(.horizontal, 80)
             
             Spacer()
             
@@ -28,11 +22,11 @@ struct DownloadView: View {
                     
                     Text("Downloading model… \(Int(progress * 100))%")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.gray)
                     
                     Text("\(formattedSize(progress)) of ~1 GB")
                         .font(.caption2)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.gray)
                     
                     Button("Cancel") {
                         modelManager.cancelDownload()
@@ -45,7 +39,7 @@ struct DownloadView: View {
                 VStack(spacing: 16) {
                     Text("A 1 GB language model will be downloaded to enable on-device AI. This only happens once.")
                         .font(.callout)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.black.opacity(0.6))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
                     
@@ -64,13 +58,15 @@ struct DownloadView: View {
                     
                     Text("Recommended: use WiFi")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.black.opacity(0.4))
                 }
             }
             
             Spacer()
         }
         .padding()
+        .background(Color(red: 0.976, green: 0.965, blue: 0.949).ignoresSafeArea())
+        .preferredColorScheme(.light)
     }
     
     private func formattedSize(_ progress: Double) -> String {

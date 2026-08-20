@@ -2,20 +2,30 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject var modelManager: ModelManager
+    @State private var showSplash = true
     
     var body: some View {
-        Group {
-            switch modelManager.state {
-            case .needsDownload:
-                DownloadView()
-            case .downloading(let progress):
-                DownloadView(progress: progress)
-            case .ready:
-                ChatView()
-            case .error(let message):
-                ErrorView(message: message) {
-                    modelManager.retryDownload()
+        ZStack {
+            Group {
+                switch modelManager.state {
+                case .needsDownload:
+                    DownloadView()
+                case .downloading(let progress):
+                    DownloadView(progress: progress)
+                case .ready:
+                    ChatView()
+                case .error(let message):
+                    ErrorView(message: message) {
+                        modelManager.retryDownload()
+                    }
                 }
+            }
+            
+            if showSplash {
+                SplashView {
+                    showSplash = false
+                }
+                .transition(.opacity)
             }
         }
     }

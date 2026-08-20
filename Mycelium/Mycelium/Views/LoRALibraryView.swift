@@ -30,6 +30,18 @@ struct LoRALibraryView: View {
             } header: {
                 Text("Installed")
                     .font(.system(.caption, design: .monospaced))
+            } footer: {
+                if !loraManager.installed.isEmpty {
+                    Button {
+                        for lora in loraManager.installed {
+                            loraManager.delete(lora: lora, engine: engine)
+                        }
+                    } label: {
+                        Text("Delete All")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+                }
             }
             
             Section {
@@ -64,35 +76,30 @@ struct InstalledLoRARow: View {
     let onDelete: () -> Void
     
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(lora.isActive ? Color.green : Color.gray.opacity(0.4))
-                        .frame(width: 8, height: 8)
-                    Text(lora.name)
-                        .font(.system(.body, design: .monospaced))
-                        .fontWeight(.medium)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(lora.name)
+                    .font(.system(.body, design: .monospaced))
+                    .fontWeight(.medium)
+                Spacer()
+                Button(action: onToggle) {
+                    Text(lora.isActive ? "Active" : "Load")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(lora.isActive ? Color.green.opacity(0.2) : Color.purple.opacity(0.2))
+                        .foregroundColor(lora.isActive ? .green : .purple)
+                        .cornerRadius(8)
                 }
-                TagsRow(tags: lora.tags)
-                Text("\(lora.sizeMB) MB • rank \(lora.rank) • by @\(lora.authorHandle)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                .buttonStyle(.plain)
             }
             
-            Spacer()
+            TagsRow(tags: lora.tags)
             
-            Button(action: onToggle) {
-                Text(lora.isActive ? "Active" : "Load")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(lora.isActive ? Color.green.opacity(0.2) : Color.purple.opacity(0.2))
-                    .foregroundColor(lora.isActive ? .green : .purple)
-                    .cornerRadius(8)
-            }
-            .buttonStyle(.plain)
+            Text("\(lora.sizeMB) MB • rank \(lora.rank) • by @\(lora.authorHandle)")
+                .font(.caption)
+                .foregroundColor(.secondary)
         }
         .padding(.vertical, 4)
         .swipeActions(edge: .trailing) {
@@ -136,16 +143,60 @@ struct TagsRow: View {
     let tags: [String]
     
     var body: some View {
-        HStack(spacing: 6) {
+        FlowLayout(spacing: 6) {
             ForEach(tags, id: \.self) { tag in
                 Text(tag)
                     .font(.system(size: 10, design: .monospaced))
+                    .lineLimit(1)
+                    .fixedSize()
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(Color.purple.opacity(0.12))
                     .foregroundColor(.purple)
                     .cornerRadius(4)
             }
+        }
+    }
+}
+
+/// Simple wrapping flow layout for tags
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+    
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > maxWidth && x > 0 {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: maxWidth, height: y + rowHeight)
+    }
+    
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x: CGFloat = bounds.minX
+        var y: CGFloat = bounds.minY
+        var rowHeight: CGFloat = 0
+        
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > bounds.maxX && x > bounds.minX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
         }
     }
 }
