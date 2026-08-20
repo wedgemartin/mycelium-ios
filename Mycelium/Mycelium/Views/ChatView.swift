@@ -5,6 +5,7 @@ struct ChatMessage: Identifiable {
     let role: Role
     let content: String
     let timestamp = Date()
+    var loraSource: String? = nil // name of LoRA that was active during generation
     
     enum Role {
         case user
@@ -227,7 +228,10 @@ struct ChatView: View {
                 }
             }
             
-            let response = ChatMessage(role: .assistant, content: streamingText)
+            // Tag response with active LoRA if any
+            let activeLoRA = loraManager.installed.first(where: \.isActive)?.name
+            var response = ChatMessage(role: .assistant, content: streamingText)
+            response.loraSource = activeLoRA
             messages.append(response)
             streamingText = ""
             isGenerating = false
@@ -242,11 +246,20 @@ struct MessageBubble: View {
         HStack {
             if message.role == .user { Spacer() }
             
-            Text(message.content)
-                .padding(12)
-                .background(message.role == .user ? Color.purple : Color(.systemGray5))
-                .foregroundColor(message.role == .user ? .white : .primary)
-                .cornerRadius(16)
+            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
+                Text(message.content)
+                    .padding(12)
+                    .background(message.role == .user ? Color.purple : Color(.systemGray5))
+                    .foregroundColor(message.role == .user ? .white : .primary)
+                    .cornerRadius(16)
+                
+                if let source = message.loraSource {
+                    Text("🍄 via \(source)")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.purple.opacity(0.7))
+                        .padding(.horizontal, 4)
+                }
+            }
             
             if message.role == .assistant { Spacer() }
         }
