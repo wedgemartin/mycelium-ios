@@ -86,7 +86,7 @@ class NetworkManager {
             let matchCount = normalizedTags.filter { tag in
                 searchable.contains { s in s.contains(tag) }
             }.count
-            return matchCount > 0
+            return matchCount >= 2
         }.sorted { a, b in
             let aSearchable = (a.tags + [a.name]).map { normalize($0) }
             let bSearchable = (b.tags + [b.name]).map { normalize($0) }
