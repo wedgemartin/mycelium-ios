@@ -18,6 +18,7 @@ struct ChatView: View {
     @Environment(\.llamaEngine) var engine
     @Environment(\.loraManager) var loraManager
     @Environment(\.networkManager) var network
+    @Environment(\.peerManager) var peerManager
     @State private var inputText = ""
     @State private var messages: [ChatMessage] = []
     @State private var isGenerating = false
@@ -181,6 +182,15 @@ struct ChatView: View {
                 // TODO: Use real identity - for now use a temp address
                 let tempAddress = "spore1mycelium\(Int.random(in: 1000...9999))"
                 network.connect(address: tempAddress)
+                
+                // Start P2P peer discovery on local network
+                let installedHashes = loraManager.installed.map(\.hash)
+                peerManager.start(address: tempAddress, installedHashes: installedHashes)
+                peerManager.onLoRAReceived = { hash, data in
+                    if let lora = network.catalog.first(where: { $0.hash == hash }) {
+                        loraManager.install(lora: lora, data: data)
+                    }
+                }
             }
         }
     }
@@ -211,20 +221,37 @@ struct ChatView: View {
             }
             print("mycelium: \(uninstalled.count) not yet installed")
             
-            // Step 3: Download any missing LoRAs
+            // Step 3: Download any missing LoRAs (P2P first, then bot)
             if !uninstalled.isEmpty {
                 pullingKnowledge = true
                 pullingName = uninstalled.map(\.name).joined(separator: ", ")
                 
-                // Download sequentially
-                for needed in uninstalled {
+                // Download sequentially (limit to top 2 most relevant)
+                for needed in uninstalled.prefix(2) {
                     pullingName = needed.name
-                    await withCheckedContinuation { continuation in
-                        network.onLoRADownloaded = { [self] lora, data in
-                            loraManager.install(lora: lora, data: data)
-                            continuation.resume()
+                    
+                    // Try P2P first — check if any local peer has this LoRA
+                    if let peer = peerManager.peerWith(loraHash: needed.hash) {
+                        print("mycelium: 🔄 requesting \(needed.name) from local peer \(peer.host)")
+                        await withCheckedContinuation { continuation in
+                            peerManager.onLoRAReceived = { hash, data in
+                                if hash == needed.hash {
+                                    self.loraManager.install(lora: needed, data: data)
+                                    continuation.resume()
+                                }
+                            }
+                            peerManager.requestLoRA(hash: needed.hash, from: peer)
                         }
-                        network.downloadLoRA(hash: needed.hash)
+                    } else {
+                        // Fall back to bot via DERP
+                        print("mycelium: no local peer has \(needed.name), falling back to bot")
+                        await withCheckedContinuation { continuation in
+                            network.onLoRADownloaded = { [self] lora, data in
+                                loraManager.install(lora: lora, data: data)
+                                continuation.resume()
+                            }
+                            network.downloadLoRA(hash: needed.hash)
+                        }
                     }
                 }
                 pullingKnowledge = false
@@ -237,10 +264,12 @@ struct ChatView: View {
                 messages.append(pullMsg)
             }
             
-            // Step 4: Activate ALL matched LoRAs (stack them)
-            for match in matches {
-                if let installed = loraManager.installed.first(where: { $0.hash == match.hash }),
-                   !installed.isActive {
+            // Step 4: Deactivate all, then activate only the top matches for THIS query
+            for lora in loraManager.installed where lora.isActive {
+                loraManager.deactivate(lora: lora, engine: engine)
+            }
+            for match in matches.prefix(2) {
+                if let installed = loraManager.installed.first(where: { $0.hash == match.hash }) {
                     loraManager.activate(lora: installed, engine: engine)
                 }
             }

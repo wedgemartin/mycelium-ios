@@ -74,6 +74,7 @@ struct InstalledLoRARow: View {
     let lora: LoRAInfo
     let onToggle: () -> Void
     let onDelete: () -> Void
+    @State private var showDisclaimer = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -97,15 +98,42 @@ struct InstalledLoRARow: View {
             
             TagsRow(tags: lora.tags)
             
-            Text("\(lora.sizeMB) MB • rank \(lora.rank) • by @\(lora.authorHandle)")
-                .font(.caption)
-                .foregroundColor(.secondary)
+            HStack {
+                Text("\(lora.sizeMB) MB • rank \(lora.rank) • by @\(lora.authorHandle)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                if lora.sourceURL != nil {
+                    Spacer()
+                    Button {
+                        showDisclaimer = true
+                    } label: {
+                        HStack(spacing: 2) {
+                            Image(systemName: "link")
+                            Text("Source")
+                        }
+                        .font(.caption2)
+                        .foregroundColor(.purple.opacity(0.7))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
         .padding(.vertical, 4)
         .swipeActions(edge: .trailing) {
             Button(role: .destructive, action: onDelete) {
                 Label("Delete", systemImage: "trash")
             }
+        }
+        .alert("Content Source", isPresented: $showDisclaimer) {
+            if let urlStr = lora.sourceURL, let url = URL(string: urlStr) {
+                Button("Visit Source") {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("This adapter was trained on content from \(lora.sourceURL ?? "a third-party source"). Mycelium does not guarantee that responses accurately represent the original publisher's content. Visit the source for authoritative information.")
         }
     }
 }

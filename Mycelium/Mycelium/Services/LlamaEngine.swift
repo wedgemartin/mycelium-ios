@@ -35,7 +35,7 @@ class LlamaEngine {
             }
             
             var ctxParams = llama_context_default_params()
-            ctxParams.n_ctx = 2048
+            ctxParams.n_ctx = 8192
             ctxParams.n_batch = 512
             
             guard let ctx = llama_init_from_model(model, ctxParams) else {
@@ -81,29 +81,44 @@ class LlamaEngine {
             let mem = llama_get_memory(context)
             llama_memory_clear(mem, true)
             
-            // Create batch and process prompt
-            var batch = llama_batch_init(512, 0, 1)
+            // Create batch and process prompt in chunks of 512
+            let batchSize = 512
+            var batch = llama_batch_init(Int32(batchSize), 0, 1)
             defer { llama_batch_free(batch) }
             
-            // Feed prompt tokens
-            for (i, token) in promptTokens.enumerated() {
-                batch.n_tokens = Int32(i + 1)
-                batch.token[i] = token
-                batch.pos[i] = Int32(i)
-                batch.n_seq_id[i] = 1
-                if let seqIds = batch.seq_id, let seqId = seqIds[i] {
-                    seqId[0] = 0
-                }
-                batch.logits[i] = (i == promptTokens.count - 1) ? 1 : 0
-            }
+            // Truncate prompt if it exceeds context window (leave room for generation)
+            let maxPromptTokens = 8192 - 512 // leave 512 for generation
+            let truncatedPrompt = promptTokens.count > maxPromptTokens
+                ? Array(promptTokens.suffix(maxPromptTokens))
+                : promptTokens
             
-            guard llama_decode(context, batch) == 0 else {
-                print("llama: prompt decode failed")
-                return
+            // Feed prompt tokens in batches
+            var pos: Int32 = 0
+            for chunkStart in stride(from: 0, to: truncatedPrompt.count, by: batchSize) {
+                let chunkEnd = min(chunkStart + batchSize, truncatedPrompt.count)
+                let chunk = truncatedPrompt[chunkStart..<chunkEnd]
+                
+                batch.n_tokens = Int32(chunk.count)
+                for (i, token) in chunk.enumerated() {
+                    batch.token[i] = token
+                    batch.pos[i] = pos + Int32(i)
+                    batch.n_seq_id[i] = 1
+                    if let seqIds = batch.seq_id, let seqId = seqIds[i] {
+                        seqId[0] = 0
+                    }
+                    // Only request logits for the very last token of the entire prompt
+                    batch.logits[i] = (chunkStart + i == truncatedPrompt.count - 1) ? 1 : 0
+                }
+                
+                guard llama_decode(context, batch) == 0 else {
+                    print("llama: prompt decode failed at pos \(pos)")
+                    return
+                }
+                pos += Int32(chunk.count)
             }
             
             // Generate tokens
-            var nCur = Int32(promptTokens.count)
+            var nCur = pos
             let maxGenerate: Int32 = 512
             
             for _ in 0..<maxGenerate {
@@ -174,12 +189,15 @@ class LlamaEngine {
     
     func unloadLoRA(path: String) {
         guard let idx = activeLoRAs.firstIndex(of: path) else { return }
-        if let adapter = loadedAdapters[idx] {
-            llama_adapter_lora_free(adapter)
-        }
+        let adapter = loadedAdapters[idx]
         loadedAdapters.remove(at: idx)
         activeLoRAs.remove(at: idx)
+        // First update the context to stop using this adapter
         applyAdapters()
+        // Then free the adapter memory (now safe, context no longer references it)
+        if let adapter {
+            llama_adapter_lora_free(adapter)
+        }
         print("llama: unloaded LoRA from \(path)")
     }
     

@@ -67,3 +67,8 @@ training/gguf/
 training/llama.cpp/
 training/base-model/
 *.gguf
+pipeline/output/
+pipeline/gguf/
+pipeline/llama.cpp/
+pipeline/base-model/
+pipeline/publish_binaries/

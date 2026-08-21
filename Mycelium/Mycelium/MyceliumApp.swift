@@ -13,6 +13,10 @@ struct NetworkManagerKey: EnvironmentKey {
     static let defaultValue = NetworkManager()
 }
 
+struct PeerManagerKey: EnvironmentKey {
+    static let defaultValue = PeerManager()
+}
+
 extension EnvironmentValues {
     var loraManager: LoRAManager {
         get { self[LoRAManagerKey.self] }
@@ -28,6 +32,11 @@ extension EnvironmentValues {
         get { self[NetworkManagerKey.self] }
         set { self[NetworkManagerKey.self] = newValue }
     }
+    
+    var peerManager: PeerManager {
+        get { self[PeerManagerKey.self] }
+        set { self[PeerManagerKey.self] = newValue }
+    }
 }
 
 @main
@@ -36,6 +45,7 @@ struct MyceliumApp: App {
     @State private var loraManager = LoRAManager()
     @State private var engine = LlamaEngine()
     @State private var network = NetworkManager()
+    @State private var peerManager = PeerManager()
     
     var body: some Scene {
         WindowGroup {
@@ -44,6 +54,7 @@ struct MyceliumApp: App {
                 .environment(\.loraManager, loraManager)
                 .environment(\.llamaEngine, engine)
                 .environment(\.networkManager, network)
+                .environment(\.peerManager, peerManager)
                 .preferredColorScheme(.dark)
         }
     }

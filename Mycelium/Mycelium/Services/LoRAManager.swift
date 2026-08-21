@@ -109,7 +109,8 @@ class LoRAManager {
                 tags: tagsFromFilename(filename),
                 timestamp: Int64(Date().timeIntervalSince1970),
                 signature: "",
-                downloadURL: nil
+                downloadURL: nil,
+                sourceURL: nil
             )
             installed.append(info)
         }

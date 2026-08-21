@@ -193,7 +193,8 @@ class NetworkManager {
                 tags: entry["tags"] as? [String] ?? [],
                 timestamp: Int64(Date().timeIntervalSince1970),
                 signature: "",
-                downloadURL: entry["download_url"] as? String
+                downloadURL: entry["download_url"] as? String,
+                sourceURL: entry["source_url"] as? String
             )
             newCatalog.append(info)
         }
