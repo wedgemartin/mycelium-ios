@@ -19,6 +19,7 @@ struct ChatView: View {
     @Environment(\.loraManager) var loraManager
     @Environment(\.networkManager) var network
     @Environment(\.peerManager) var peerManager
+    @Environment(\.speechService) var speech
     @State private var inputText = ""
     @State private var messages: [ChatMessage] = []
     @State private var isGenerating = false
@@ -26,6 +27,8 @@ struct ChatView: View {
     @State private var pullingKnowledge = false
     @State private var pullingName = ""
     @State private var showLibrary = false
+    @State private var showAbout = false
+    @State private var showActiveAdapters = false
     
     private let greetings = [
         "What can I help you with today?",
@@ -131,9 +134,12 @@ struct ChatView: View {
                 .padding(.horizontal)
                 .padding(.vertical, 8)
             }
-            .navigationTitle("Mycelium")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .sheet(isPresented: $showAbout) {
+                AboutView()
+            }
             .sheet(isPresented: $showLibrary) {
                 NavigationStack {
                     LoRALibraryView()
@@ -144,16 +150,37 @@ struct ChatView: View {
                         }
                 }
             }
+            .sheet(isPresented: $showActiveAdapters) {
+                ActiveAdaptersView()
+            }
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Button {
+                        showAbout = true
+                    } label: {
+                        Text("Mycelium")
+                            .font(.system(size: 18, design: .serif))
+                            .fontWeight(.semibold)
+                    }
+                }
                 ToolbarItem(placement: .topBarLeading) {
                     let activeCount = loraManager.installed.filter(\.isActive).count
                     if activeCount > 0 {
                         Button {
-                            showLibrary = true
+                            showActiveAdapters = true
                         } label: {
                             Text("\(activeCount) 🧠")
                                 .font(.system(size: 14, design: .monospaced))
                         }
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        speech.isEnabled.toggle()
+                        if !speech.isEnabled { speech.stop() }
+                    } label: {
+                        Image(systemName: speech.isEnabled ? "speaker.wave.2.fill" : "speaker.slash")
+                            .foregroundColor(speech.isEnabled ? .purple : .gray)
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -280,8 +307,11 @@ struct ChatView: View {
     }
     
     private func runInference() {
+        let ttsPrompt: String? = speech.isEnabled
+            ? "Answer concisely in 1-2 sentences. Be direct and brief."
+            : nil
         Task {
-            await engine.generate(messages: messages) { token in
+            await engine.generate(messages: messages, systemPrompt: ttsPrompt) { token in
                 Task { @MainActor in
                     streamingText += token
                 }
@@ -292,6 +322,7 @@ struct ChatView: View {
             var response = ChatMessage(role: .assistant, content: streamingText)
             response.loraSource = activeNames.isEmpty ? nil : activeNames.joined(separator: " + ")
             messages.append(response)
+            speech.speak(response.content)
             streamingText = ""
             isGenerating = false
         }

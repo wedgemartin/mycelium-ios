@@ -56,12 +56,12 @@ class LlamaEngine {
         }
     }
     
-    func generate(messages: [ChatMessage], onToken: @escaping @Sendable (String) -> Void) async {
+    func generate(messages: [ChatMessage], systemPrompt: String? = nil, onToken: @escaping @Sendable (String) -> Void) async {
         guard isLoaded, let model, let context, let vocab else { return }
         isGenerating = true
         defer { isGenerating = false }
         
-        let prompt = formatPrompt(messages: messages)
+        let prompt = formatPrompt(messages: messages, systemPrompt: systemPrompt)
         
         await Task.detached { [prompt] in
             // Tokenize
@@ -301,8 +301,11 @@ class LlamaEngine {
         print("llama: KV cache cleared (adapter change)")
     }
     
-    private func formatPrompt(messages: [ChatMessage]) -> String {
+    private func formatPrompt(messages: [ChatMessage], systemPrompt: String? = nil) -> String {
         var prompt = ""
+        if let sys = systemPrompt {
+            prompt += "<|im_start|>system\n\(sys)<|im_end|>\n"
+        }
         for msg in messages {
             switch msg.role {
             case .user:

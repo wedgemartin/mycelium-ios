@@ -17,6 +17,10 @@ struct PeerManagerKey: EnvironmentKey {
     static let defaultValue = PeerManager()
 }
 
+struct SpeechServiceKey: EnvironmentKey {
+    static let defaultValue = SpeechService()
+}
+
 extension EnvironmentValues {
     var loraManager: LoRAManager {
         get { self[LoRAManagerKey.self] }
@@ -37,6 +41,11 @@ extension EnvironmentValues {
         get { self[PeerManagerKey.self] }
         set { self[PeerManagerKey.self] = newValue }
     }
+    
+    var speechService: SpeechService {
+        get { self[SpeechServiceKey.self] }
+        set { self[SpeechServiceKey.self] = newValue }
+    }
 }
 
 @main
@@ -46,6 +55,7 @@ struct MyceliumApp: App {
     @State private var engine = LlamaEngine()
     @State private var network = NetworkManager()
     @State private var peerManager = PeerManager()
+    @State private var speechService = SpeechService()
     
     var body: some Scene {
         WindowGroup {
@@ -55,6 +65,7 @@ struct MyceliumApp: App {
                 .environment(\.llamaEngine, engine)
                 .environment(\.networkManager, network)
                 .environment(\.peerManager, peerManager)
+                .environment(\.speechService, speechService)
                 .preferredColorScheme(.dark)
         }
     }
