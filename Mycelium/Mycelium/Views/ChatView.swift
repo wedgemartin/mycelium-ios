@@ -310,10 +310,12 @@ struct ChatView: View {
         let ttsPrompt: String? = speech.isEnabled
             ? "Answer concisely in 1-2 sentences. Be direct and brief."
             : nil
+        speech.beginStreaming()
         Task {
             await engine.generate(messages: messages, systemPrompt: ttsPrompt) { token in
                 Task { @MainActor in
                     streamingText += token
+                    speech.feedToken(token)
                 }
             }
             
@@ -322,7 +324,7 @@ struct ChatView: View {
             var response = ChatMessage(role: .assistant, content: streamingText)
             response.loraSource = activeNames.isEmpty ? nil : activeNames.joined(separator: " + ")
             messages.append(response)
-            speech.speak(response.content)
+            speech.endStreaming()
             streamingText = ""
             isGenerating = false
         }

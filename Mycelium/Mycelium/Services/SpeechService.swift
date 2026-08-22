@@ -2,7 +2,7 @@ import AVFoundation
 import SwiftUI
 
 /// Manages text-to-speech using AVSpeechSynthesizer.
-/// Persists the enabled state to UserDefaults.
+/// Supports streaming: feed tokens incrementally and sentences are spoken as they complete.
 @Observable
 class SpeechService: NSObject, AVSpeechSynthesizerDelegate {
     private let synthesizer = AVSpeechSynthesizer()
@@ -14,28 +14,59 @@ class SpeechService: NSObject, AVSpeechSynthesizerDelegate {
     
     var isSpeaking: Bool { synthesizer.isSpeaking }
     
+    // Streaming state
+    private var buffer = ""
+    private var spokenUpTo = 0
+    
     override init() {
         self.isEnabled = UserDefaults.standard.bool(forKey: defaultsKey)
         super.init()
         synthesizer.delegate = self
     }
     
-    /// Speak the given text. Stops any current speech first.
+    /// Start a new streaming session. Call before feeding tokens.
+    func beginStreaming() {
+        guard isEnabled else { return }
+        buffer = ""
+        spokenUpTo = 0
+    }
+    
+    /// Feed a token during generation. Speaks complete sentences as they arrive.
+    func feedToken(_ token: String) {
+        guard isEnabled else { return }
+        buffer += token
+        
+        // Look for sentence boundaries after the last spoken position
+        let unspoken = String(buffer.dropFirst(spokenUpTo))
+        
+        // Find sentence-ending punctuation followed by space or at end
+        if let range = unspoken.range(of: #"[.!?]\s"#, options: .regularExpression) {
+            let sentenceEnd = unspoken.distance(from: unspoken.startIndex, to: range.upperBound)
+            let sentence = String(unspoken.prefix(sentenceEnd)).trimmingCharacters(in: .whitespaces)
+            
+            if !sentence.isEmpty {
+                enqueueSentence(sentence)
+                spokenUpTo += sentenceEnd
+            }
+        }
+    }
+    
+    /// Finish streaming — speak any remaining text that didn't end with punctuation.
+    func endStreaming() {
+        guard isEnabled else { return }
+        let remaining = String(buffer.dropFirst(spokenUpTo)).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !remaining.isEmpty {
+            enqueueSentence(remaining)
+        }
+        buffer = ""
+        spokenUpTo = 0
+    }
+    
+    /// Speak a complete text immediately (non-streaming use).
     func speak(_ text: String) {
         guard isEnabled, !text.isEmpty else { return }
         stop()
-        
-        let utterance = AVSpeechUtterance(string: text)
-        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
-        utterance.pitchMultiplier = 1.0
-        utterance.volume = 1.0
-        
-        // Use a good default voice for the device language
-        if let voice = AVSpeechSynthesisVoice(language: AVSpeechSynthesisVoice.currentLanguageCode()) {
-            utterance.voice = voice
-        }
-        
-        synthesizer.speak(utterance)
+        enqueueSentence(text)
     }
     
     /// Stop any ongoing speech.
@@ -43,5 +74,21 @@ class SpeechService: NSObject, AVSpeechSynthesizerDelegate {
         if synthesizer.isSpeaking {
             synthesizer.stopSpeaking(at: .immediate)
         }
+        buffer = ""
+        spokenUpTo = 0
+    }
+    
+    private func enqueueSentence(_ text: String) {
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        utterance.pitchMultiplier = 1.0
+        utterance.volume = 1.0
+        
+        if let voice = AVSpeechSynthesisVoice(language: AVSpeechSynthesisVoice.currentLanguageCode()) {
+            utterance.voice = voice
+        }
+        
+        // AVSpeechSynthesizer queues utterances — they play sequentially
+        synthesizer.speak(utterance)
     }
 }
