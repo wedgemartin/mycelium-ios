@@ -29,6 +29,7 @@ struct ChatView: View {
     @State private var showLibrary = false
     @State private var showAbout = false
     @State private var showActiveAdapters = false
+    @State private var showTrainingWizard = false
     
     private let greetings = [
         "What can I help you with today?",
@@ -108,7 +109,7 @@ struct ChatView: View {
                             .textFieldStyle(.plain)
                             .padding(10)
                             .padding(.trailing, inputText.isEmpty ? 0 : 28)
-                            .background(Color(.systemGray6))
+                            .background(Color(white: 0.2))
                             .cornerRadius(20)
                         
                         if !inputText.isEmpty {
@@ -135,8 +136,10 @@ struct ChatView: View {
                 .padding(.vertical, 8)
             }
             .navigationTitle("")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            #endif
             .sheet(isPresented: $showAbout) {
                 AboutView()
             }
@@ -144,7 +147,7 @@ struct ChatView: View {
                 NavigationStack {
                     LoRALibraryView()
                         .toolbar {
-                            ToolbarItem(placement: .topBarTrailing) {
+                            ToolbarItem(placement: .confirmationAction) {
                                 Button("Done") { showLibrary = false }
                             }
                         }
@@ -152,6 +155,13 @@ struct ChatView: View {
             }
             .sheet(isPresented: $showActiveAdapters) {
                 ActiveAdaptersView()
+            }
+            .sheet(isPresented: $showTrainingWizard) {
+                #if os(macOS)
+                TrainingWizardView()
+                #else
+                EmptyView()
+                #endif
             }
             .toolbar {
                 ToolbarItem(placement: .principal) {
@@ -163,18 +173,58 @@ struct ChatView: View {
                             .fontWeight(.semibold)
                     }
                 }
-                ToolbarItem(placement: .topBarLeading) {
-                    let activeCount = loraManager.installed.filter(\.isActive).count
-                    if activeCount > 0 {
-                        Button {
-                            showActiveAdapters = true
+                ToolbarItem(placement: .navigation) {
+                    HStack(spacing: 12) {
+                        Menu {
+                            #if os(macOS)
+                            Button {
+                                showTrainingWizard = true
+                            } label: {
+                                Label("Train New Adapter", systemImage: "brain")
+                            }
+                            #else
+                            Link(destination: URL(string: "https://apps.apple.com/app/mycelium-ai/id6803590299")!) {
+                                Label("Train on Mac", systemImage: "desktopcomputer")
+                            }
+                            #endif
+                            Button {
+                                showLibrary = true
+                            } label: {
+                                Label("Library", systemImage: "square.stack.3d.up")
+                            }
+                            Divider()
+                            Button {
+                                showAbout = true
+                            } label: {
+                                Label("About", systemImage: "info.circle")
+                            }
+                            Divider()
+                            Link(destination: URL(string: "https://mycelium.getspore.xyz/privacy.html")!) {
+                                Label("Privacy Policy", systemImage: "lock.shield")
+                            }
+                            Link(destination: URL(string: "https://mycelium.getspore.xyz/terms.html")!) {
+                                Label("Terms of Service", systemImage: "doc.text")
+                            }
+                            Link(destination: URL(string: "https://mycelium.getspore.xyz/support.html")!) {
+                                Label("Support", systemImage: "questionmark.circle")
+                            }
                         } label: {
-                            Text("\(activeCount) 🧠")
-                                .font(.system(size: 14, design: .monospaced))
+                            Image(systemName: "line.3.horizontal")
+                                .font(.system(size: 16))
+                        }
+                        
+                        let activeCount = loraManager.installed.filter(\.isActive).count
+                        if activeCount > 0 {
+                            Button {
+                                showActiveAdapters = true
+                            } label: {
+                                Text("\(activeCount) 🧠")
+                                    .font(.system(size: 14, design: .monospaced))
+                            }
                         }
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {
                     Button {
                         speech.isEnabled.toggle()
                         if !speech.isEnabled { speech.stop() }
@@ -183,7 +233,7 @@ struct ChatView: View {
                             .foregroundColor(speech.isEnabled ? .purple : .gray)
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {
                     NavigationLink {
                         LoRALibraryView()
                     } label: {
@@ -342,7 +392,7 @@ struct MessageBubble: View {
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
                 Text(message.content)
                     .padding(12)
-                    .background(message.role == .user ? Color.purple : Color(.systemGray5))
+                    .background(message.role == .user ? Color.purple : Color(white: 0.2))
                     .foregroundColor(message.role == .user ? .white : .primary)
                     .cornerRadius(16)
                 

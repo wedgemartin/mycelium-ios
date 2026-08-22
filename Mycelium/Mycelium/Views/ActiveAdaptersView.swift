@@ -44,9 +44,11 @@ struct ActiveAdaptersView: View {
         
             Spacer()
                 .navigationTitle("Active Adapters")
+                #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
+                #endif
                 .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
+                    ToolbarItem(placement: .confirmationAction) {
                         Button("Done") { dismiss() }
                     }
                 }

@@ -29,6 +29,13 @@ class NetworkManager {
         myAddress = address
         print("mycelium: connecting to network as \(address)")
         connectDERP()
+        
+        // Listen for publish requests from the training wizard
+        NotificationCenter.default.addObserver(forName: .init("publishLoRA"), object: nil, queue: .main) { [weak self] notification in
+            if let message = notification.userInfo?["message"] as? String {
+                self?.sendRaw(message)
+            }
+        }
     }
     
     // MARK: - Catalog Operations
@@ -286,6 +293,19 @@ class NetworkManager {
         // Truncate unknown addresses for display
         if pubkey.hasPrefix("spore1") { return String(pubkey.dropFirst(6).prefix(8)) }
         return pubkey.prefix(12).description
+    }
+    
+    /// Send a pre-serialized JSON message via DERP (used by training wizard publish)
+    func sendRaw(_ jsonString: String) {
+        guard let data = jsonString.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        
+        // Extract dest and forward via DERP
+        if let dest = json["dest"] as? String,
+           let payload = try? JSONSerialization.data(withJSONObject: json) {
+            print("mycelium: publishing LoRA to network (\(payload.count) bytes)")
+            sendDERP(to: dest, payload: payload)
+        }
     }
     
     private func sendToBot(_ message: [String: Any]) {

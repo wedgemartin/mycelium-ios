@@ -128,7 +128,11 @@ struct InstalledLoRARow: View {
         .alert("Content Source", isPresented: $showDisclaimer) {
             if let urlStr = lora.sourceURL, let url = URL(string: urlStr) {
                 Button("Visit Source") {
+                    #if os(iOS)
                     UIApplication.shared.open(url)
+                    #else
+                    NSWorkspace.shared.open(url)
+                    #endif
                 }
             }
             Button("OK", role: .cancel) { }
