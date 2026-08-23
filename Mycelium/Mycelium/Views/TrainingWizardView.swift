@@ -266,17 +266,13 @@ struct ReviewConfigureView: View {
                             .textFieldStyle(.roundedBorder)
                     }
                     
-                    Toggle(isOn: $training.shareToNetwork) {
-                        VStack(alignment: .leading) {
-                            Text("Share to Spore network")
-                                .font(.subheadline)
-                                .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.1))
-                            Text("Other peers can discover and use this adapter")
-                                .font(.caption)
-                                .foregroundColor(Color(red: 0.5, green: 0.5, blue: 0.5))
-                        }
+                    HStack(spacing: 8) {
+                        Image(systemName: "info.circle")
+                            .foregroundColor(Color(red: 0.55, green: 0.37, blue: 0.24))
+                        Text("After training, test the adapter in chat. When you're happy with results, publish it from your Library.")
+                            .font(.caption)
+                            .foregroundColor(Color(red: 0.5, green: 0.5, blue: 0.5))
                     }
-                    .tint(Color(red: 0.55, green: 0.37, blue: 0.24))
                 }
                 .padding()
                 .background(Color.white)
@@ -330,11 +326,11 @@ struct ReviewConfigureView: View {
                     Text("Start Training")
                         .frame(maxWidth: .infinity)
                         .padding()
-                        .background(training.qualityPassed && training.acceptedTerms ? Color(red: 0.55, green: 0.37, blue: 0.24) : Color.gray)
+                        .background(training.qualityPassed && training.acceptedTerms && training.hasValidName ? Color(red: 0.55, green: 0.37, blue: 0.24) : Color.gray)
                         .foregroundColor(.white)
                         .cornerRadius(12)
                 }
-                .disabled(!training.qualityPassed || !training.acceptedTerms)
+                .disabled(!training.qualityPassed || !training.acceptedTerms || !training.hasValidName)
             }
             .padding()
         }
@@ -429,17 +425,33 @@ struct TrainingProgressView: View {
                     Text("Adapter ready!")
                         .font(.headline)
                         .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.1))
+                    Text("Test it out and rate responses.\nAfter 10+ ratings, you can publish to the network.")
+                        .font(.caption)
+                        .foregroundColor(Color(red: 0.5, green: 0.5, blue: 0.5))
+                        .multilineTextAlignment(.center)
+                    
+                    NavigationLink {
+                        TestChatView(loraHash: training.trainedLoRAHash, loraName: training.adapterName)
+                    } label: {
+                        HStack {
+                            Image(systemName: "bubble.left.and.text.bubble.right")
+                            Text("Test & Rate")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color(red: 0.55, green: 0.37, blue: 0.24))
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                    }
+                    .padding(.horizontal)
+                    
                     Button {
                         dismiss()
                     } label: {
-                        Text("Done")
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color(red: 0.55, green: 0.37, blue: 0.24))
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
+                        Text("Skip for now")
+                            .font(.subheadline)
+                            .foregroundColor(Color(red: 0.5, green: 0.5, blue: 0.5))
                     }
-                    .padding(.horizontal)
                 }
             }
         }

@@ -19,8 +19,9 @@ struct LoRAInfo: Identifiable, Codable {
     // Local-only state (not gossiped)
     var isActive: Bool = false
     var localPath: String? = nil
+    var isLocal: Bool = false  // true = trained locally, not yet published to network
     
     enum CodingKeys: String, CodingKey {
-        case hash, name, authorPubkey, authorHandle, baseModel, rank, sizeMB, tags, timestamp, signature, downloadURL, sourceURL
+        case hash, name, authorPubkey, authorHandle, baseModel, rank, sizeMB, tags, timestamp, signature, downloadURL, sourceURL, isLocal
     }
 }

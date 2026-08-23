@@ -30,6 +30,10 @@ struct ChatView: View {
     @State private var showAbout = false
     @State private var showActiveAdapters = false
     @State private var showTrainingWizard = false
+    @State private var hasShownPublishNudge = false
+    @State private var showTestChat = false
+    @State private var testChatHash = ""
+    @State private var testChatName = ""
     
     private let greetings = [
         "What can I help you with today?",
@@ -143,15 +147,8 @@ struct ChatView: View {
             .sheet(isPresented: $showAbout) {
                 AboutView()
             }
-            .sheet(isPresented: $showLibrary) {
-                NavigationStack {
-                    LoRALibraryView()
-                        .toolbar {
-                            ToolbarItem(placement: .confirmationAction) {
-                                Button("Done") { showLibrary = false }
-                            }
-                        }
-                }
+            .navigationDestination(isPresented: $showLibrary) {
+                LoRALibraryView()
             }
             .sheet(isPresented: $showActiveAdapters) {
                 ActiveAdaptersView()
@@ -163,6 +160,11 @@ struct ChatView: View {
                 EmptyView()
                 #endif
             }
+            #if os(macOS)
+            .navigationDestination(isPresented: $showTestChat) {
+                TestChatView(loraHash: testChatHash, loraName: testChatName)
+            }
+            #endif
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Button {
@@ -246,6 +248,18 @@ struct ChatView: View {
                 if greeting.isEmpty {
                     greeting = greetings.randomElement()!
                 }
+                
+                // Listen for Test & Rate requests from Library
+                NotificationCenter.default.addObserver(forName: .init("openTestChat"), object: nil, queue: .main) { notification in
+                    if let info = notification.userInfo,
+                       let hash = info["hash"] as? String,
+                       let name = info["name"] as? String {
+                        testChatHash = hash
+                        testChatName = name
+                        showTestChat = true
+                    }
+                }
+                
                 if let path = modelManager.modelPath {
                     engine.loadModel(path: path)
                     // Re-apply any LoRAs that were active before restart
@@ -375,6 +389,15 @@ struct ChatView: View {
             response.loraSource = activeNames.isEmpty ? nil : activeNames.joined(separator: " + ")
             messages.append(response)
             speech.endStreaming()
+            
+            // Show publish nudge if a local-only LoRA contributed
+            let hasLocalActive = loraManager.installed.filter(\.isActive).contains(where: \.isLocal)
+            if hasLocalActive && !hasShownPublishNudge {
+                hasShownPublishNudge = true
+                let nudge = ChatMessage(role: .assistant, content: "🍄 Happy with the results? You can publish this adapter to the Spore network from your Library (☰ → Library → Publish).")
+                messages.append(nudge)
+            }
+            
             streamingText = ""
             isGenerating = false
         }

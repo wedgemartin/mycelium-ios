@@ -8,6 +8,20 @@ import CryptoKit
 class TrainingViewModel: ObservableObject {
     @Published var step: TrainingStep = .source
     
+    init() {
+        // Listen for retrain requests from Test & Rate
+        NotificationCenter.default.addObserver(forName: .init("retrainWithFeedback"), object: nil, queue: .main) { [weak self] notification in
+            guard let self,
+                  let info = notification.userInfo,
+                  let approved = info["approved"] as? [(String, String)],
+                  let rejected = info["rejected"] as? [(String, String)] else { return }
+            
+            self.feedbackApproved = approved
+            self.feedbackRejected = rejected
+            self.startTraining() // Re-run training with curated data
+        }
+    }
+    
     // Source input state (preserved across navigation)
     @Published var sourceType: SourceType = .rss
     @Published var rssURLInput = ""
@@ -38,6 +52,7 @@ class TrainingViewModel: ObservableObject {
     @Published var stageDetail = ""
     @Published var estimatedTimeRemaining = 0
     @Published var isComplete = false
+    @Published var trainedLoRAHash = ""
     
     // Internal
     private var trainingData: [(String, String)] = []
@@ -58,6 +73,11 @@ class TrainingViewModel: ObservableObject {
     
     var tags: [String] {
         tagsString.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+    }
+    
+    var hasValidName: Bool {
+        let trimmed = adapterName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.count >= 3 && trimmed.lowercased() != "train" && !trimmed.hasPrefix("{")
     }
     
     // MARK: - File Import
@@ -180,6 +200,17 @@ class TrainingViewModel: ObservableObject {
                 .replacingOccurrences(of: ".org", with: "")
                 .capitalized
         }
+        // If source looks like JSON/JSONL, use filename instead
+        if sourceText.hasPrefix("{") || sourceText.hasPrefix("[") {
+            if let fileName = importedFileName {
+                return fileName.replacingOccurrences(of: ".jsonl", with: "")
+                    .replacingOccurrences(of: ".json", with: "")
+                    .replacingOccurrences(of: "_", with: " ")
+                    .replacingOccurrences(of: "-", with: " ")
+                    .capitalized
+            }
+            return "Custom Adapter"
+        }
         let words = sourceText.prefix(200).split(separator: " ").prefix(4)
         return words.joined(separator: " ") + "..."
     }
@@ -218,22 +249,13 @@ class TrainingViewModel: ObservableObject {
                 }
                 try await convertToGGUF()
                 
-                // Publish to Spore network if toggle is on
-                if shareToNetwork {
-                    await MainActor.run {
-                        currentStage = "Publishing"
-                        stageDetail = "Sharing adapter to Spore network..."
-                        progress = 0.98
-                    }
-                    try await publishToNetwork()
-                }
+                // Install locally for testing (don't publish yet)
+                await installLocalAdapter()
                 
                 await MainActor.run {
                     progress = 1.0
                     currentStage = "Complete"
-                    stageDetail = shareToNetwork
-                        ? "Adapter ready and published to the network!"
-                        : "Your adapter is ready to use!"
+                    stageDetail = "Adapter installed! Try it out, then publish from your Library."
                     isComplete = true
                 }
             } catch {
@@ -659,14 +681,24 @@ class TrainingViewModel: ObservableObject {
         return (trainFile, validFile)
     }
     
+    /// Feedback data for retraining (from Test & Rate)
+    private var feedbackApproved: [(String, String)] = []
+    private var feedbackRejected: [(String, String)] = []
+    
     private func prepareTrainingJSONL() -> URL? {
-        guard !trainingData.isEmpty else { return nil }
+        guard !trainingData.isEmpty || !feedbackApproved.isEmpty else { return nil }
         
         let tempDir = FileManager.default.temporaryDirectory
         let trainFile = tempDir.appendingPathComponent("mycelium_train_\(UUID().uuidString).jsonl")
         
         var jsonl = ""
+        
+        // Original training data (exclude any that match rejected feedback)
+        let rejectedSet = Set(feedbackRejected.map { "\($0.0)|\($0.1)" })
         for (question, answer) in trainingData {
+            let key = "\(question)|\(answer)"
+            if rejectedSet.contains(key) { continue } // Skip rejected pairs
+            
             let entry: [String: Any] = [
                 "messages": [
                     ["role": "user", "content": question],
@@ -678,6 +710,22 @@ class TrainingViewModel: ObservableObject {
                 jsonl += line + "\n"
             }
         }
+        
+        // Add approved feedback as additional training examples
+        for (question, answer) in feedbackApproved {
+            let entry: [String: Any] = [
+                "messages": [
+                    ["role": "user", "content": question],
+                    ["role": "assistant", "content": answer]
+                ]
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: entry),
+               let line = String(data: data, encoding: .utf8) {
+                jsonl += line + "\n"
+            }
+        }
+        
+        try? jsonl.write(to: trainFile, atomically: true, encoding: .utf8)
         
         try? jsonl.write(to: trainFile, atomically: true, encoding: .utf8)
         return trainFile
@@ -808,6 +856,47 @@ class TrainingViewModel: ObservableObject {
         await MainActor.run {
             stageDetail = "Adapter ready: \(self.sanitizedName()).gguf"
             progress = 0.99
+        }
+    }
+    
+    /// Install the trained adapter locally for testing before publishing
+    private func installLocalAdapter() async {
+        guard let adapterDir = outputAdapterPath else { return }
+        
+        let ggufFile = adapterDir.appendingPathComponent("\(sanitizedName()).gguf")
+        guard FileManager.default.fileExists(atPath: ggufFile.path) else { return }
+        
+        // Copy to the LoRA directory
+        let loraDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("loras")
+        try? FileManager.default.createDirectory(at: loraDir, withIntermediateDirectories: true)
+        
+        // Compute hash for filename
+        let data = try? Data(contentsOf: ggufFile)
+        guard let data else { return }
+        let hash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined().prefix(16)
+        let destFile = loraDir.appendingPathComponent("\(hash).gguf")
+        
+        try? FileManager.default.copyItem(at: ggufFile, to: destFile)
+        
+        // Store hash for test chat
+        await MainActor.run {
+            trainedLoRAHash = String(hash)
+        }
+        
+        // Notify the app to pick up the new adapter
+        await MainActor.run {
+            NotificationCenter.default.post(
+                name: .init("loraTrainedLocally"),
+                object: nil,
+                userInfo: [
+                    "hash": String(hash),
+                    "name": adapterName,
+                    "tags": tags,
+                    "path": destFile.path,
+                    "isLocal": true
+                ]
+            )
         }
     }
     

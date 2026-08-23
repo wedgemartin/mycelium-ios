@@ -79,29 +79,58 @@ struct InstalledLoRARow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
+                if lora.isLocal {
+                    Image(systemName: "person.fill")
+                        .font(.caption)
+                        .foregroundColor(Color(red: 0.55, green: 0.37, blue: 0.24))
+                }
                 Text(lora.name)
                     .font(.system(.body, design: .monospaced))
                     .fontWeight(.medium)
                 Spacer()
-                Button(action: onToggle) {
-                    Text(lora.isActive ? "Active" : "Load")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(lora.isActive ? Color.green.opacity(0.2) : Color.purple.opacity(0.2))
-                        .foregroundColor(lora.isActive ? .green : .purple)
-                        .cornerRadius(8)
+                if !lora.isLocal {
+                    Button(action: onToggle) {
+                        Text(lora.isActive ? "Active" : "Load")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(lora.isActive ? Color.green.opacity(0.2) : Color.purple.opacity(0.2))
+                            .foregroundColor(lora.isActive ? .green : .purple)
+                            .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Text("Your adapter")
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color(red: 0.55, green: 0.37, blue: 0.24).opacity(0.15))
+                        .foregroundColor(Color(red: 0.55, green: 0.37, blue: 0.24))
+                        .cornerRadius(6)
                 }
-                .buttonStyle(.plain)
             }
             
             TagsRow(tags: lora.tags)
             
             HStack {
-                Text("\(lora.sizeMB) MB • rank \(lora.rank) • by @\(lora.authorHandle)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                if lora.isLocal {
+                    Text("Trained \(formattedDate(lora.timestamp)) • \(lora.sizeMB) MB")
+                        .font(.caption)
+                        .foregroundColor(Color(red: 0.55, green: 0.37, blue: 0.24).opacity(0.7))
+                } else {
+                    Text("\(lora.sizeMB) MB • rank \(lora.rank) • by @\(lora.authorHandle)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                if lora.isLocal {
+                    Spacer()
+                    Text("Local only")
+                        .font(.caption2)
+                        .foregroundColor(.orange)
+                }
                 
                 if lora.sourceURL != nil {
                     Spacer()
@@ -116,6 +145,68 @@ struct InstalledLoRARow: View {
                         .foregroundColor(.purple.opacity(0.7))
                     }
                     .buttonStyle(.plain)
+                }
+            }
+            
+            // Publish button for locally trained adapters
+            if lora.isLocal {
+                VStack(spacing: 6) {
+                    // Test button — opens Test & Rate chat
+                    Button {
+                        NotificationCenter.default.post(
+                            name: .init("openTestChat"),
+                            object: nil,
+                            userInfo: ["hash": lora.hash, "name": lora.name]
+                        )
+                    } label: {
+                        HStack {
+                            Image(systemName: "bubble.left.and.text.bubble.right")
+                            Text("Test & Rate")
+                        }
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(Color.purple.opacity(0.1))
+                        .foregroundColor(.purple)
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                    
+                    // Publish button — requires 10+ ratings
+                    let ratingCount = UserDefaults.standard.integer(forKey: "ratings_\(lora.hash)")
+                    if ratingCount >= 10 {
+                        Button {
+                            NotificationCenter.default.post(
+                                name: .init("publishLoRAFromLibrary"),
+                                object: nil,
+                                userInfo: ["hash": lora.hash]
+                            )
+                        } label: {
+                            HStack {
+                                Image(systemName: "arrow.up.circle.fill")
+                                Text("Publish to Spore Network")
+                            }
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(Color(red: 0.55, green: 0.37, blue: 0.24).opacity(0.15))
+                            .foregroundColor(Color(red: 0.55, green: 0.37, blue: 0.24))
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        HStack(spacing: 4) {
+                            Image(systemName: "lock")
+                                .font(.caption2)
+                            Text("Rate \(max(0, 10 - ratingCount)) more responses to unlock publishing")
+                                .font(.caption2)
+                        }
+                        .foregroundColor(Color(red: 0.5, green: 0.5, blue: 0.5))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                    }
                 }
             }
         }
@@ -139,6 +230,13 @@ struct InstalledLoRARow: View {
         } message: {
             Text("This adapter was trained on content from \(lora.sourceURL ?? "a third-party source"). Mycelium does not guarantee that responses accurately represent the original publisher's content. Visit the source for authoritative information.")
         }
+    }
+    
+    private func formattedDate(_ timestamp: Int64) -> String {
+        let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 }
 

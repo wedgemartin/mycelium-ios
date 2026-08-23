@@ -18,6 +18,37 @@ class LoRAManager {
         try? FileManager.default.createDirectory(at: loraDirectory, withIntermediateDirectories: true)
         loadMetadata()
         discoverLocalAdapters()
+        
+        // Listen for locally trained adapters
+        NotificationCenter.default.addObserver(forName: .init("loraTrainedLocally"), object: nil, queue: .main) { [weak self] notification in
+            guard let info = notification.userInfo,
+                  let hash = info["hash"] as? String,
+                  let name = info["name"] as? String,
+                  let tags = info["tags"] as? [String] else { return }
+            
+            let lora = LoRAInfo(
+                hash: hash,
+                name: name,
+                authorPubkey: "local",
+                authorHandle: "You",
+                baseModel: "SmolLM2-1.7B-Instruct-Q4_K_M",
+                rank: 8,
+                sizeMB: 3,
+                tags: tags,
+                timestamp: Int64(Date().timeIntervalSince1970),
+                signature: "",
+                downloadURL: nil,
+                sourceURL: nil
+            )
+            var localLora = lora
+            localLora.isLocal = true
+            localLora.localPath = info["path"] as? String
+            
+            self?.installed.removeAll { $0.hash == hash }
+            self?.installed.append(localLora)
+            self?.saveMetadata()
+            print("lora: installed locally trained adapter '\(name)'")
+        }
     }
     
     /// Path to a LoRA's GGUF file on disk
