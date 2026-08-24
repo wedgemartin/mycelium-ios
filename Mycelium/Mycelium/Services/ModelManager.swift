@@ -165,7 +165,12 @@ class ModelManager: ObservableObject {
         guard state != .ready else { return }
         state = .downloading(progress: 0)
         
-        let session = URLSession(configuration: .default)
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 300  // 5 min per request
+        config.timeoutIntervalForResource = 3600  // 1 hour total
+        config.waitsForConnectivity = true
+        
+        let session = URLSession(configuration: config)
         let task = session.downloadTask(with: selectedModel.url) { [weak self] tempURL, response, error in
             Task { @MainActor [weak self] in
                 guard let self else { return }

@@ -201,7 +201,8 @@ class NetworkManager {
                 timestamp: Int64(Date().timeIntervalSince1970),
                 signature: "",
                 downloadURL: entry["download_url"] as? String,
-                sourceURL: entry["source_url"] as? String
+                sourceURL: entry["source_url"] as? String,
+                score: entry["score"] as? Int ?? 0
             )
             newCatalog.append(info)
         }
@@ -306,6 +307,17 @@ class NetworkManager {
             print("mycelium: publishing LoRA to network (\(payload.count) bytes)")
             sendDERP(to: dest, payload: payload)
         }
+    }
+    
+    /// Vote on a LoRA adapter (up or down)
+    func sendVote(hash: String, vote: String) {
+        let message: [String: Any] = [
+            "type": "lora_vote",
+            "hash": hash,
+            "vote": vote
+        ]
+        sendToBot(message)
+        print("mycelium: voted \(vote) on \(hash.prefix(12))")
     }
     
     private func sendToBot(_ message: [String: Any]) {

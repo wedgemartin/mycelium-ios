@@ -38,7 +38,8 @@ class LoRAManager {
                 timestamp: Int64(Date().timeIntervalSince1970),
                 signature: "",
                 downloadURL: nil,
-                sourceURL: nil
+                sourceURL: nil,
+                score: 0
             )
             var localLora = lora
             localLora.isLocal = true
@@ -141,7 +142,8 @@ class LoRAManager {
                 timestamp: Int64(Date().timeIntervalSince1970),
                 signature: "",
                 downloadURL: nil,
-                sourceURL: nil
+                sourceURL: nil,
+                score: 0
             )
             installed.append(info)
         }

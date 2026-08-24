@@ -260,6 +260,15 @@ struct ChatView: View {
                     }
                 }
                 
+                // Listen for vote requests from Library
+                NotificationCenter.default.addObserver(forName: .init("loraVote"), object: nil, queue: .main) { notification in
+                    if let info = notification.userInfo,
+                       let hash = info["hash"] as? String,
+                       let vote = info["vote"] as? String {
+                        network.sendVote(hash: hash, vote: vote)
+                    }
+                }
+                
                 if let path = modelManager.modelPath {
                     engine.loadModel(path: path)
                     // Re-apply any LoRAs that were active before restart

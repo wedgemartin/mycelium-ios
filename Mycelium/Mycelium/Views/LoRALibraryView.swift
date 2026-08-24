@@ -120,9 +120,37 @@ struct InstalledLoRARow: View {
                         .font(.caption)
                         .foregroundColor(Color(red: 0.55, green: 0.37, blue: 0.24).opacity(0.7))
                 } else {
-                    Text("\(lora.sizeMB) MB • rank \(lora.rank) • by @\(lora.authorHandle)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    HStack {
+                        Text("\(lora.sizeMB) MB • rank \(lora.rank) • by @\(lora.authorHandle)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        // Vote buttons + score
+                        HStack(spacing: 8) {
+                            Button {
+                                NotificationCenter.default.post(name: .init("loraVote"), object: nil, userInfo: ["hash": lora.hash, "vote": "up"])
+                            } label: {
+                                Image(systemName: "hand.thumbsup")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            
+                            Text("\(lora.score)")
+                                .font(.caption2)
+                                .fontWeight(.medium)
+                                .foregroundColor(lora.score > 0 ? .green : lora.score < 0 ? .red : .secondary)
+                            
+                            Button {
+                                NotificationCenter.default.post(name: .init("loraVote"), object: nil, userInfo: ["hash": lora.hash, "vote": "down"])
+                            } label: {
+                                Image(systemName: "hand.thumbsdown")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                 }
                 
                 if lora.isLocal {
