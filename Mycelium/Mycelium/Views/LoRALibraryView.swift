@@ -243,6 +243,20 @@ struct InstalledLoRARow: View {
             Button(role: .destructive, action: onDelete) {
                 Label("Delete", systemImage: "trash")
             }
+            if !lora.isLocal {
+                Button {
+                    NotificationCenter.default.post(name: .init("loraReport"), object: nil, userInfo: ["hash": lora.hash])
+                } label: {
+                    Label("Report", systemImage: "flag")
+                }
+                .tint(.orange)
+                Button {
+                    NotificationCenter.default.post(name: .init("loraBlock"), object: nil, userInfo: ["pubkey": lora.authorPubkey, "hash": lora.hash])
+                } label: {
+                    Label("Block", systemImage: "hand.raised")
+                }
+                .tint(.red)
+            }
         }
         .alert("Content Source", isPresented: $showDisclaimer) {
             if let urlStr = lora.sourceURL, let url = URL(string: urlStr) {

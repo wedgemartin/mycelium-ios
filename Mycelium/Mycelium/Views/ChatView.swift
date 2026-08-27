@@ -207,6 +207,9 @@ struct ChatView: View {
                             Link(destination: URL(string: "https://mycelium.getspore.xyz/terms.html")!) {
                                 Label("Terms of Service", systemImage: "doc.text")
                             }
+                            Link(destination: URL(string: "https://mycelium.getspore.xyz/safety.html")!) {
+                                Label("Safety & Reporting", systemImage: "shield")
+                            }
                             Link(destination: URL(string: "https://mycelium.getspore.xyz/support.html")!) {
                                 Label("Support", systemImage: "questionmark.circle")
                             }
@@ -266,6 +269,21 @@ struct ChatView: View {
                        let hash = info["hash"] as? String,
                        let vote = info["vote"] as? String {
                         network.sendVote(hash: hash, vote: vote)
+                    }
+                }
+                
+                // Listen for report requests
+                NotificationCenter.default.addObserver(forName: .init("loraReport"), object: nil, queue: .main) { notification in
+                    if let hash = notification.userInfo?["hash"] as? String {
+                        network.sendReport(hash: hash, reason: "user_reported")
+                        network.hideAdapter(hash)
+                    }
+                }
+                
+                // Listen for block requests
+                NotificationCenter.default.addObserver(forName: .init("loraBlock"), object: nil, queue: .main) { notification in
+                    if let pubkey = notification.userInfo?["pubkey"] as? String {
+                        network.blockPublisher(pubkey)
                     }
                 }
                 

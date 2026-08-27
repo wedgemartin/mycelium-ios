@@ -208,8 +208,10 @@ class NetworkManager {
         }
         
         DispatchQueue.main.async {
-            self.catalog = newCatalog
-            print("mycelium: catalog synced — \(newCatalog.count) LoRAs available")
+            let blocked = self.blockedPublishers
+            let hidden = self.hiddenAdapters
+            self.catalog = newCatalog.filter { !blocked.contains($0.authorPubkey) && !hidden.contains($0.hash) }
+            print("mycelium: catalog synced — \(self.catalog.count) LoRAs available")
         }
     }
     
@@ -318,6 +320,50 @@ class NetworkManager {
         ]
         sendToBot(message)
         print("mycelium: voted \(vote) on \(hash.prefix(12))")
+    }
+    
+    /// Report an adapter as objectionable
+    func sendReport(hash: String, reason: String) {
+        let message: [String: Any] = [
+            "type": "lora_report",
+            "hash": hash,
+            "reason": reason
+        ]
+        sendToBot(message)
+        print("mycelium: reported \(hash.prefix(12)) for \(reason)")
+    }
+    
+    /// Blocked publisher pubkeys (persisted locally)
+    var blockedPublishers: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: "blocked_publishers") ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: "blocked_publishers") }
+    }
+    
+    func blockPublisher(_ pubkey: String) {
+        var blocked = blockedPublishers
+        blocked.insert(pubkey)
+        blockedPublishers = blocked
+        // Remove their adapters from the catalog immediately
+        DispatchQueue.main.async {
+            self.catalog.removeAll { $0.authorPubkey == pubkey }
+        }
+        print("mycelium: blocked publisher \(pubkey.prefix(12))")
+    }
+    
+    /// Hidden adapter hashes (persisted locally)
+    var hiddenAdapters: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: "hidden_adapters") ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: "hidden_adapters") }
+    }
+    
+    func hideAdapter(_ hash: String) {
+        var hidden = hiddenAdapters
+        hidden.insert(hash)
+        hiddenAdapters = hidden
+        DispatchQueue.main.async {
+            self.catalog.removeAll { $0.hash == hash }
+        }
+        print("mycelium: hid adapter \(hash.prefix(12))")
     }
     
     private func sendToBot(_ message: [String: Any]) {
