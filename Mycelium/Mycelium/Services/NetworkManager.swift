@@ -15,6 +15,18 @@ class NetworkManager {
     private let derpURL: String
     private let substrateURL: String
     
+    // Metrics counters (reported to Substrate for network observability)
+    private var receivedDERP = 0
+    private var sentDERP = 0
+    private var bytesDERPIn = 0
+    private var bytesDERPOut = 0
+    private var loraDownloads = 0        // completed LoRA downloads
+    private var loraChunksReceived = 0   // individual chunks received
+    private var loraPublishes = 0        // adapters published to network
+    private var catalogSyncs = 0         // catalog refresh count
+    private var peerDownloads = 0        // LoRAs fetched from local peers (P2P direct)
+    private var metricsTimer: Timer?
+    
     // Callbacks
     var onLoRADownloaded: ((LoRAInfo, Data) -> Void)?
     
@@ -128,6 +140,8 @@ class NetworkManager {
             self?.receiveLoop()
             // Request catalog immediately after connecting
             self?.requestCatalog()
+            // Start periodic metrics reporting
+            self?.startMetricsReporting()
         }
     }
     
@@ -160,6 +174,8 @@ class NetworkManager {
         let senderLen = Int(data[1]) << 24 | Int(data[2]) << 16 | Int(data[3]) << 8 | Int(data[4])
         guard data.count > 5 + senderLen else { return }
         let payload = data[(5 + senderLen)...]
+        receivedDERP += 1
+        bytesDERPIn += data.count
         handleMessage(Data(payload))
     }
     
@@ -211,6 +227,7 @@ class NetworkManager {
             let blocked = self.blockedPublishers
             let hidden = self.hiddenAdapters
             self.catalog = newCatalog.filter { !blocked.contains($0.authorPubkey) && !hidden.contains($0.hash) }
+            self.catalogSyncs += 1
             print("mycelium: catalog synced — \(self.catalog.count) LoRAs available")
         }
     }
@@ -225,6 +242,7 @@ class NetworkManager {
         
         // Find the matching catalog entry
         if let lora = catalog.first(where: { $0.hash == hash }) {
+            loraDownloads += 1
             DispatchQueue.main.async {
                 self.isDownloading = false
                 self.downloadProgress = ""
@@ -250,6 +268,7 @@ class NetworkManager {
         }
         pendingChunks[hash]?[index] = chunkData
         pendingChunkTotals[hash] = total
+        loraChunksReceived += 1
         
         let received = pendingChunks[hash]?.count ?? 0
         print("mycelium: chunk \(index+1)/\(total) for \(hash.prefix(12)) (\(chunkData.count / 1024)KB)")
@@ -307,6 +326,7 @@ class NetworkManager {
         if let dest = json["dest"] as? String,
            let payload = try? JSONSerialization.data(withJSONObject: json) {
             print("mycelium: publishing LoRA to network (\(payload.count) bytes)")
+            loraPublishes += 1
             sendDERP(to: dest, payload: payload)
         }
     }
@@ -383,10 +403,56 @@ class NetworkManager {
         frame.append(Data(bytes: &len, count: 4))
         frame.append(destData)
         frame.append(payload)
+        sentDERP += 1
+        bytesDERPOut += frame.count
         webSocket?.send(.data(frame)) { error in
             if let error {
                 print("mycelium: send error: \(error.localizedDescription)")
             }
         }
+    }
+    
+    // MARK: - Metrics
+    
+    /// Register metrics with Substrate (called on connect + periodically)
+    func reportMetrics(lat: Double = 0, lng: Double = 0) {
+        guard !myAddress.isEmpty else { return }
+        let body: [String: Any] = [
+            "pubkey": myAddress,
+            "handle": "mycelium",
+            "app": "mycelium",  // distinguishes from spore clients
+            "lat": lat,
+            "lng": lng,
+            "stats": [
+                "received_derp": receivedDERP,
+                "sent_derp": sentDERP,
+                "bytes_derp_in": bytesDERPIn,
+                "bytes_derp_out": bytesDERPOut,
+                "lora_downloads": loraDownloads,
+                "lora_chunks_received": loraChunksReceived,
+                "lora_publishes": loraPublishes,
+                "catalog_syncs": catalogSyncs,
+                "peer_downloads": peerDownloads,
+                "installed_loras": 0  // set by caller if available
+            ]
+        ]
+        Task {
+            guard let url = URL(string: substrateURL + "/register") else { return }
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+            _ = try? await URLSession.shared.data(for: request)
+            print("mycelium: reported metrics (derp in/out: \(receivedDERP)/\(sentDERP), downloads: \(loraDownloads))")
+        }
+    }
+    
+    /// Start periodic metrics reporting (every 60s)
+    func startMetricsReporting() {
+        metricsTimer?.invalidate()
+        metricsTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.reportMetrics()
+        }
+        reportMetrics() // immediate first report
     }
 }
