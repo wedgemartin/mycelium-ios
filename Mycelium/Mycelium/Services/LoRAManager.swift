@@ -116,6 +116,27 @@ class LoRAManager {
         available.append(lora)
     }
     
+    /// When the catalog syncs, update any hash-named orphan adapters with real metadata.
+    /// Fixes adapters that were discovered from disk before catalog metadata was available.
+    func reconcileWithCatalog(_ catalog: [LoRAInfo]) {
+        var changed = false
+        for i in installed.indices {
+            // Only fix adapters that look like orphans (name == hash-derived, author == "local" but not truly local-trained)
+            let current = installed[i]
+            guard current.authorPubkey == "local", !current.isLocal else { continue }
+            if let match = catalog.first(where: { $0.hash == current.hash }) {
+                // Preserve local state, adopt catalog metadata
+                var updated = match
+                updated.isActive = current.isActive
+                updated.localPath = current.localPath
+                installed[i] = updated
+                changed = true
+                print("lora: reconciled '\(current.name)' → '\(match.name)' from catalog")
+            }
+        }
+        if changed { saveMetadata() }
+    }
+    
     // MARK: - Persistence
     
     /// Scan the loras/ directory for GGUF files not yet in our metadata

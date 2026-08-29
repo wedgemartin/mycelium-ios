@@ -1,5 +1,6 @@
 import AVFoundation
 import SwiftUI
+import AVFoundation
 
 /// Manages text-to-speech using AVSpeechSynthesizer.
 /// Supports streaming: feed tokens incrementally and sentences are spoken as they complete.
@@ -9,7 +10,10 @@ class SpeechService: NSObject, AVSpeechSynthesizerDelegate {
     private let defaultsKey = "tts_enabled"
     
     var isEnabled: Bool {
-        didSet { UserDefaults.standard.set(isEnabled, forKey: defaultsKey) }
+        didSet {
+            UserDefaults.standard.set(isEnabled, forKey: defaultsKey)
+            if isEnabled { configureAudioSession() }
+        }
     }
     
     var isSpeaking: Bool { synthesizer.isSpeaking }
@@ -22,6 +26,20 @@ class SpeechService: NSObject, AVSpeechSynthesizerDelegate {
         self.isEnabled = UserDefaults.standard.bool(forKey: defaultsKey)
         super.init()
         synthesizer.delegate = self
+        if isEnabled { configureAudioSession() }
+    }
+    
+    /// Configure the audio session for playback (required for TTS to produce sound on iOS).
+    private func configureAudioSession() {
+        #if os(iOS)
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+            try session.setActive(true)
+        } catch {
+            print("speech: audio session setup failed: \(error)")
+        }
+        #endif
     }
     
     /// Start a new streaming session. Call before feeding tokens.
@@ -88,7 +106,10 @@ class SpeechService: NSObject, AVSpeechSynthesizerDelegate {
             utterance.voice = voice
         }
         
-        // AVSpeechSynthesizer queues utterances — they play sequentially
-        synthesizer.speak(utterance)
+        // AVSpeechSynthesizer queues utterances — they play sequentially.
+        // Dispatch on main to avoid unsafeForcedSync warnings from async streaming context.
+        DispatchQueue.main.async { [weak self] in
+            self?.synthesizer.speak(utterance)
+        }
     }
 }

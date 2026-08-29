@@ -206,10 +206,14 @@ class LlamaEngine {
     func extractTags(query: String, city: String = "") async -> [String] {
         guard isLoaded else { return [] }
         
-        let locationContext = city.isEmpty ? "" : " The user is in \(city)."
+        let locationContext = city.isEmpty ? "" : " Region: \(city)."
         let tagPrompt = """
         <|im_start|>system
-        Extract search tags from the question. Output ONLY lowercase tags separated by commas. Include the city/region. Example: food, sao paulo, restaurants, cuisine\(locationContext)<|im_end|>
+        You are a tag extractor. Read the user's question and output 3 to 5 topic keywords, lowercase, comma-separated. Output ONLY the keywords — no sentences, no definitions, no answers. Describe what the question is ABOUT (e.g. slang, food, transit, news, weather).\(locationContext)<|im_end|>
+        <|im_start|>user
+        What's the weather like in Tokyo today?<|im_end|>
+        <|im_start|>assistant
+        weather, forecast, tokyo, climate<|im_end|>
         <|im_start|>user
         \(query)<|im_end|>
         <|im_start|>assistant

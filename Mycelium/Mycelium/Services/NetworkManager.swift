@@ -29,6 +29,7 @@ class NetworkManager {
     
     // Callbacks
     var onLoRADownloaded: ((LoRAInfo, Data) -> Void)?
+    var onCatalogUpdated: (([LoRAInfo]) -> Void)?
     
     init() {
         // Use same infrastructure as Spore
@@ -99,12 +100,18 @@ class NetworkManager {
         }
         
         let normalizedTags = tags.map { normalize($0) }
+        print("🔍 MATCH: extractedTags=\(extractedTags) → normalized=\(normalizedTags)")
+        print("🔍 MATCH: catalog has \(catalog.count) LoRAs")
         
-        return catalog.filter { lora in
+        let results = catalog.filter { lora in
             let searchable = (lora.tags + [lora.name]).map { normalize($0) }
-            let matchCount = normalizedTags.filter { tag in
+            let matched = normalizedTags.filter { tag in
                 searchable.contains { s in s.contains(tag) }
-            }.count
+            }
+            let matchCount = matched.count
+            if matchCount > 0 {
+                print("🔍 MATCH:   '\(lora.name)' tags=\(lora.tags) → \(matchCount) hits \(matched) \(matchCount >= 2 ? "✅" : "(need 2)")")
+            }
             return matchCount >= 2
         }.sorted { a, b in
             let aSearchable = (a.tags + [a.name]).map { normalize($0) }
@@ -113,6 +120,8 @@ class NetworkManager {
             let bScore = normalizedTags.filter { tag in bSearchable.contains { $0.contains(tag) } }.count
             return aScore > bScore
         }
+        print("🔍 MATCH: \(results.count) LoRAs passed threshold: \(results.map(\.name))")
+        return results
     }
     
     // MARK: - DERP Connection
@@ -228,6 +237,7 @@ class NetworkManager {
             let hidden = self.hiddenAdapters
             self.catalog = newCatalog.filter { !blocked.contains($0.authorPubkey) && !hidden.contains($0.hash) }
             self.catalogSyncs += 1
+            self.onCatalogUpdated?(self.catalog)
             print("mycelium: catalog synced — \(self.catalog.count) LoRAs available")
         }
     }

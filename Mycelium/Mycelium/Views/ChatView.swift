@@ -21,6 +21,7 @@ struct ChatView: View {
     @Environment(\.peerManager) var peerManager
     @Environment(\.speechService) var speech
     @State private var inputText = ""
+    @State private var recognizer = SpeechRecognizer()
     @State private var messages: [ChatMessage] = []
     @State private var isGenerating = false
     @State private var streamingText = ""
@@ -106,26 +107,35 @@ struct ChatView: View {
                 Divider()
                 
                 // Input
-                HStack(spacing: 12) {
-                    ZStack(alignment: .trailing) {
-                        TextField("Message...", text: $inputText, axis: .vertical)
-                            .lineLimit(1...5)
-                            .textFieldStyle(.plain)
-                            .padding(10)
-                            .padding(.trailing, inputText.isEmpty ? 0 : 28)
-                            .background(Color(white: 0.2))
-                            .cornerRadius(20)
-                        
-                        if !inputText.isEmpty {
-                            Button {
-                                inputText = ""
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(.gray)
-                            }
-                            .padding(.trailing, 10)
-                        }
+                HStack(spacing: 10) {
+                    // Mic button (speech-to-text)
+                    Button {
+                        toggleDictation()
+                    } label: {
+                        Image(systemName: recognizer.isListening ? "mic.fill" : "mic")
+                            .font(.system(size: 22))
+                            .foregroundColor(recognizer.isListening ? .red : .purple)
+                            .frame(width: 32, height: 32)
                     }
+                    .disabled(isGenerating)
+                    
+                    TextField("Message...", text: $inputText, axis: .vertical)
+                        .lineLimit(1...5)
+                        .textFieldStyle(.plain)
+                        .padding(10)
+                        .background(Color(white: 0.2))
+                        .cornerRadius(20)
+                        .overlay(alignment: .topTrailing) {
+                            if !inputText.isEmpty {
+                                Button {
+                                    inputText = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.gray)
+                                        .padding(8)
+                                }
+                            }
+                        }
                     
                     Button {
                         sendMessage()
@@ -287,6 +297,11 @@ struct ChatView: View {
                     }
                 }
                 
+                // Reconcile orphaned/hash-named adapters with real catalog metadata
+                network.onCatalogUpdated = { catalog in
+                    loraManager.reconcileWithCatalog(catalog)
+                }
+                
                 if let path = modelManager.modelPath {
                     engine.loadModel(path: path)
                     // Re-apply any LoRAs that were active before restart
@@ -313,7 +328,22 @@ struct ChatView: View {
         }
     }
     
+    private func toggleDictation() {
+        if recognizer.isListening {
+            recognizer.stop()
+        } else {
+            // Stop TTS if it's speaking so we don't record our own voice
+            speech.stop()
+            recognizer.onTranscript = { text in
+                inputText = text
+            }
+            recognizer.start()
+        }
+    }
+    
     private func sendMessage() {
+        // Stop dictation if active
+        if recognizer.isListening { recognizer.stop() }
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         
@@ -334,28 +364,33 @@ struct ChatView: View {
             // Step 2: Match extracted tags against the LoRA catalog
             let matches = network.matchQuery(text, extractedTags: tags)
             print("mycelium: matched \(matches.count) LoRAs: \(matches.map(\.name))")
-            let uninstalled = matches.filter { match in
+            
+            // Only consider the top 2 most relevant matches (already sorted by score)
+            let top2 = Array(matches.prefix(2))
+            print("mycelium: top 2 = \(top2.map(\.name))")
+            
+            // Of the top 2, which need downloading?
+            let uninstalled = top2.filter { match in
                 !loraManager.installed.contains(where: { $0.hash == match.hash })
             }
-            print("mycelium: \(uninstalled.count) not yet installed")
+            print("mycelium: \(uninstalled.count) of top 2 not yet installed")
             
-            // Step 3: Download any missing LoRAs (P2P first, then bot)
+            // Step 3: Download any missing top-2 LoRAs (P2P first, then bot)
             if !uninstalled.isEmpty {
                 pullingKnowledge = true
                 pullingName = uninstalled.map(\.name).joined(separator: ", ")
                 
-                // Download sequentially (limit to top 2 most relevant)
-                for needed in uninstalled.prefix(2) {
+                for needed in uninstalled {
                     pullingName = needed.name
                     
                     // Try P2P first — check if any local peer has this LoRA
                     if let peer = peerManager.peerWith(loraHash: needed.hash) {
                         print("mycelium: 🔄 requesting \(needed.name) from local peer \(peer.host)")
-                        await withCheckedContinuation { continuation in
+                        await downloadWithTimeout(seconds: 30) { done in
                             peerManager.onLoRAReceived = { hash, data in
                                 if hash == needed.hash {
                                     self.loraManager.install(lora: needed, data: data)
-                                    continuation.resume()
+                                    done()
                                 }
                             }
                             peerManager.requestLoRA(hash: needed.hash, from: peer)
@@ -363,10 +398,10 @@ struct ChatView: View {
                     } else {
                         // Fall back to bot via DERP
                         print("mycelium: no local peer has \(needed.name), falling back to bot")
-                        await withCheckedContinuation { continuation in
+                        await downloadWithTimeout(seconds: 30) { done in
                             network.onLoRADownloaded = { [self] lora, data in
                                 loraManager.install(lora: lora, data: data)
-                                continuation.resume()
+                                done()
                             }
                             network.downloadLoRA(hash: needed.hash)
                         }
@@ -388,14 +423,39 @@ struct ChatView: View {
             }
             for match in matches.prefix(2) {
                 if let installed = loraManager.installed.first(where: { $0.hash == match.hash }) {
+                    let path = loraManager.localPath(for: installed)
+                    print("⚡️ ACTIVATE: '\(installed.name)' hash=\(installed.hash.prefix(12)) localFile=\(path != nil ? "✅" : "❌ MISSING")")
                     loraManager.activate(lora: installed, engine: engine)
+                } else {
+                    print("⚡️ ACTIVATE: match '\(match.name)' NOT in installed list — needs download")
                 }
             }
+            let activeNow = loraManager.installed.filter(\.isActive).map(\.name)
+            print("⚡️ ACTIVE after step 4: \(activeNow)")
             
             // Step 5: Run inference with all relevant LoRAs active
             runInference()
         }
     }
+    /// Run a download closure that must call done(); resolves after done() or a timeout, whichever comes first.
+    private func downloadWithTimeout(seconds: Double, _ start: (@escaping () -> Void) -> Void) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let finished = NSLock()
+            var done = false
+            func resume() {
+                finished.lock(); defer { finished.unlock() }
+                guard !done else { return }
+                done = true
+                continuation.resume()
+            }
+            start { resume() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
+                print("mycelium: ⏱️ download timed out after \(Int(seconds))s")
+                resume()
+            }
+        }
+    }
+
     
     private func runInference() {
         let ttsPrompt: String? = speech.isEnabled
