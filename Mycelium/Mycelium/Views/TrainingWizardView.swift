@@ -8,7 +8,7 @@ enum TrainingStep {
     case training
 }
 
-enum SourceType {
+enum SourceType: String {
     case rss
     case paste
     case file

@@ -53,6 +53,7 @@ class TrainingViewModel: ObservableObject {
     @Published var estimatedTimeRemaining = 0
     @Published var isComplete = false
     @Published var trainedLoRAHash = ""
+    private var trainingStartTime: Date?
     
     // Internal
     private var trainingData: [(String, String)] = []
@@ -221,6 +222,7 @@ class TrainingViewModel: ObservableObject {
         step = .training
         progress = 0.0
         isComplete = false
+        trainingStartTime = Date()
         
         Task {
             do {
@@ -860,6 +862,33 @@ class TrainingViewModel: ObservableObject {
     }
     
     /// Install the trained adapter locally for testing before publishing
+    /// Report a metadata-only activation event to the substrate, which forwards a summary
+    /// to Slack. No training data, source content, or user identity is sent — only the
+    /// adapter name, base model, source type, size, and (for training) duration.
+    private func reportEvent(type: String, sizeMB: Int, hash: String = "") {
+        guard let url = URL(string: "https://ugov.xyz/api/mycelium/event") else { return }
+        var duration = 0
+        if let start = trainingStartTime {
+            duration = Int(Date().timeIntervalSince(start))
+        }
+        let body: [String: Any] = [
+            "type": type,
+            "name": adapterName,
+            "base_model": "SmolLM2-1.7B-Instruct",
+            "source": sourceType.rawValue,
+            "size_mb": sizeMB,
+            "duration_sec": duration,
+            "hash": hash
+        ]
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        req.timeoutInterval = 10
+        // Fire-and-forget — never block or fail the training/publish flow on this.
+        URLSession.shared.dataTask(with: req).resume()
+    }
+
     private func installLocalAdapter() async {
         guard let adapterDir = outputAdapterPath else { return }
         
@@ -883,6 +912,9 @@ class TrainingViewModel: ObservableObject {
         await MainActor.run {
             trainedLoRAHash = String(hash)
         }
+
+        // Report the training activation event (metadata only) to Slack via substrate.
+        reportEvent(type: "trained", sizeMB: data.count / (1024 * 1024), hash: String(hash))
         
         // Notify the app to pick up the new adapter
         await MainActor.run {
@@ -960,6 +992,9 @@ class TrainingViewModel: ObservableObject {
             )
             stageDetail = "Published to network! (\(binaryData.count / 1024)KB)"
         }
+
+        // Report the publish activation event (metadata only) to Slack via substrate.
+        reportEvent(type: "published", sizeMB: binaryData.count / (1024 * 1024), hash: hash)
     }
     
     private func loraOutputDirectory() -> URL {
