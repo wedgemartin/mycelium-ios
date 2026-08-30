@@ -866,7 +866,7 @@ class TrainingViewModel: ObservableObject {
     /// to Slack. No training data, source content, or user identity is sent — only the
     /// adapter name, base model, source type, size, and (for training) duration.
     private func reportEvent(type: String, sizeMB: Int, hash: String = "") {
-        guard let url = URL(string: "https://ugov.xyz/api/mycelium/event") else { return }
+        guard let url = URL(string: "https://substrate.getspore.xyz:30880/mycelium/event") else { return }
         var duration = 0
         if let start = trainingStartTime {
             duration = Int(Date().timeIntervalSince(start))

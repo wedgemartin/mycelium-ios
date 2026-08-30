@@ -29,7 +29,7 @@ class PeerManager {
     // MARK: - Config
     private let serviceType = "_mycelium._udp"
     private let quicPort: UInt16 = 9011
-    private let substrateWSURL = "wss://ugov.xyz/api/signal"
+    private let substrateWSURL = "wss://substrate.getspore.xyz:30880/signal"
 
     // MARK: - State
     private var myAddress: String = ""
@@ -316,7 +316,7 @@ class PeerManager {
         if let ipv6 = getIPv6Address() {
             endpoints.append("[\(ipv6)]:\(quicPort)")
         }
-        guard let url = URL(string: "https://ugov.xyz/api/register") else { return }
+        guard let url = URL(string: "https://substrate.getspore.xyz:30880/register") else { return }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")

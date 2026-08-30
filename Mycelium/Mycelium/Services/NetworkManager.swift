@@ -34,7 +34,7 @@ class NetworkManager {
     init() {
         // Use same infrastructure as Spore
         derpURL = "wss://derp.getspore.xyz:30882/relay"
-        substrateURL = "https://ugov.xyz/api"
+        substrateURL = "https://substrate.getspore.xyz:30880"
         botAddress = "spore16h0gj58dpjgvd99058x73e69aksk6z2wykr8ge6lzvttgme6e90qzl0yhj" // sporebot
     }
     
