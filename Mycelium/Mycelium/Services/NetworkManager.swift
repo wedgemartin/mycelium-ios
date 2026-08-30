@@ -11,7 +11,7 @@ class NetworkManager {
     
     private var webSocket: URLSessionWebSocketTask?
     private var myAddress: String = ""
-    private let botAddress: String
+    let botAddress: String
     private let derpURL: String
     private let substrateURL: String
     
@@ -214,7 +214,7 @@ class NetworkManager {
         
         var newCatalog: [LoRAInfo] = []
         for entry in entries {
-            let info = LoRAInfo(
+            var info = LoRAInfo(
                 hash: entry["hash"] as? String ?? "",
                 name: entry["name"] as? String ?? "",
                 authorPubkey: entry["author"] as? String ?? "",
@@ -229,6 +229,7 @@ class NetworkManager {
                 sourceURL: entry["source_url"] as? String,
                 score: entry["score"] as? Int ?? 0
             )
+            info.holders = entry["holders"] as? [String] ?? []
             newCatalog.append(info)
         }
         

@@ -382,22 +382,58 @@ struct ChatView: View {
                 
                 for needed in uninstalled {
                     pullingName = needed.name
-                    
-                    // Try P2P first — check if any local peer has this LoRA
+                    var installed = false
+
+                    // Tier 1: a peer we already know has it (LAN mDNS or a live QUIC peer).
                     if let peer = peerManager.peerWith(loraHash: needed.hash) {
-                        print("mycelium: 🔄 requesting \(needed.name) from local peer \(peer.host)")
+                        print("mycelium: 🔄 requesting \(needed.name) from peer \(peer.host) [\(peer.transport)]")
                         await downloadWithTimeout(seconds: 30) { done in
                             peerManager.onLoRAReceived = { hash, data in
                                 if hash == needed.hash {
                                     self.loraManager.install(lora: needed, data: data)
+                                    installed = true
                                     done()
                                 }
                             }
                             peerManager.requestLoRA(hash: needed.hash, from: peer)
                         }
-                    } else {
-                        // Fall back to bot via DERP
-                        print("mycelium: no local peer has \(needed.name), falling back to bot")
+                    }
+
+                    // Tier 2: no known peer — try to reach holders directly over the
+                    // internet (STUN hole-punch → QUIC). The substrate tells us which peers
+                    // hold this LoRA; the publisher is always a candidate seeder too.
+                    if !installed {
+                        var seeders = needed.holders
+                        if !needed.authorPubkey.isEmpty, needed.authorPubkey != network.botAddress,
+                           !seeders.contains(needed.authorPubkey) {
+                            seeders.append(needed.authorPubkey)
+                        }
+                        if !seeders.isEmpty {
+                            print("mycelium: 🌐 attempting direct P2P from \(seeders.count) seeder(s)")
+                            for addr in seeders.prefix(3) {
+                                peerManager.connectToInternetPeer(addr: addr)
+                            }
+                            await downloadWithTimeout(seconds: 20) { done in
+                                peerManager.onLoRAReceived = { hash, data in
+                                    if hash == needed.hash {
+                                        self.loraManager.install(lora: needed, data: data)
+                                        installed = true
+                                        done()
+                                    }
+                                }
+                                // Give hole-punch a moment, then request from whichever peer connected.
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+                                    if let peer = self.peerManager.peerWith(loraHash: needed.hash) {
+                                        self.peerManager.requestLoRA(hash: needed.hash, from: peer)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Tier 3: bot as seeder-of-last-resort (DERP).
+                    if !installed {
+                        print("mycelium: no peer served \(needed.name), falling back to bot (seeder-of-last-resort)")
                         await downloadWithTimeout(seconds: 30) { done in
                             network.onLoRADownloaded = { [self] lora, data in
                                 loraManager.install(lora: lora, data: data)

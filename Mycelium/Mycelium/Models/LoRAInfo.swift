@@ -16,6 +16,7 @@ struct LoRAInfo: Identifiable, Codable {
     let downloadURL: String?   // HTTP URL for direct download
     let sourceURL: String?     // Link to original content source
     let score: Int             // Network reputation score (upvotes - downvotes)
+    var holders: [String] = [] // peer pubkeys currently holding this LoRA (for P2P pulls)
     
     // Local-only state (not gossiped)
     var isActive: Bool = false
@@ -23,6 +24,6 @@ struct LoRAInfo: Identifiable, Codable {
     var isLocal: Bool = false  // true = trained locally, not yet published to network
     
     enum CodingKeys: String, CodingKey {
-        case hash, name, authorPubkey, authorHandle, baseModel, rank, sizeMB, tags, timestamp, signature, downloadURL, sourceURL, score, isLocal
+        case hash, name, authorPubkey, authorHandle, baseModel, rank, sizeMB, tags, timestamp, signature, downloadURL, sourceURL, score, holders, isLocal
     }
 }
