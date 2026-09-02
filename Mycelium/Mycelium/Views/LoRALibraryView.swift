@@ -270,7 +270,7 @@ struct InstalledLoRARow: View {
             }
             Button("OK", role: .cancel) { }
         } message: {
-            Text("This adapter was trained on content from \(lora.sourceURL ?? "a third-party source"). Mycelium does not guarantee that responses accurately represent the original publisher's content. Visit the source for authoritative information.")
+            Text("This adapter was trained on content from \(lora.sourceURL ?? "a third-party source"). Mycelium and this adapter are not affiliated with or endorsed by the original publisher. Generated responses may not accurately represent the source and should not be treated as authoritative — always visit the original source for accurate information.")
         }
     }
     
@@ -285,6 +285,7 @@ struct InstalledLoRARow: View {
 struct AvailableLoRARow: View {
     let lora: LoRAInfo
     let onDownload: () -> Void
+    @State private var showDisclaimer = false
     
     var body: some View {
         HStack {
@@ -296,6 +297,19 @@ struct AvailableLoRARow: View {
                 Text("\(lora.sizeMB) MB • by @\(lora.authorHandle)")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                if lora.sourceURL != nil {
+                    Button {
+                        showDisclaimer = true
+                    } label: {
+                        HStack(spacing: 2) {
+                            Image(systemName: "link")
+                            Text("Trained on third-party content — source")
+                        }
+                        .font(.caption2)
+                        .foregroundColor(.purple.opacity(0.7))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             
             Spacer()
@@ -308,6 +322,20 @@ struct AvailableLoRARow: View {
             .buttonStyle(.plain)
         }
         .padding(.vertical, 4)
+        .alert("Content Source", isPresented: $showDisclaimer) {
+            if let urlStr = lora.sourceURL, let url = URL(string: urlStr) {
+                Button("Visit Source") {
+                    #if os(iOS)
+                    UIApplication.shared.open(url)
+                    #else
+                    NSWorkspace.shared.open(url)
+                    #endif
+                }
+            }
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("This adapter was trained on content from \(lora.sourceURL ?? "a third-party source"). Mycelium and this adapter are not affiliated with or endorsed by the original publisher. Generated responses may not accurately represent the source and should not be treated as authoritative — always visit the original source for accurate information.")
+        }
     }
 }
 

@@ -60,11 +60,37 @@ class TrainingViewModel: ObservableObject {
     private var outputAdapterPath: URL?
     
     // MLX training configuration
-    private let loraLayers = 4
     private let learningRate: Float = 1e-5
-    private let trainingIterations = 500
     private let batchSize = 1
-    
+
+    /// Adaptive training profile chosen from the source corpus size (token count).
+    ///
+    /// Rationale: LoRA capacity is set by rank × number of adapted layers. Small/dense
+    /// sources (e.g. the US Constitution, a slang list) want a lean adapter to avoid
+    /// overfitting; rich sources (e.g. a Wikivoyage city guide, a full book) benefit from
+    /// more layers + higher rank so the model can actually absorb the knowledge.
+    /// SmolLM2-1.7B has 24 transformer layers total.
+    struct TrainingProfile {
+        let rank: Int
+        let numLayers: Int
+        let iterations: Int
+        let label: String
+    }
+
+    var trainingProfile: TrainingProfile {
+        switch tokenCount {
+        case ..<8_000:
+            // Tiny/dense source — keep it lean to avoid overfitting. ~11MB.
+            return TrainingProfile(rank: 8, numLayers: 6, iterations: 400, label: "compact")
+        case 8_000..<40_000:
+            // Medium source. ~25-35MB.
+            return TrainingProfile(rank: 16, numLayers: 8, iterations: 600, label: "standard")
+        default:
+            // Rich source (Wikivoyage-scale, books). ~50-70MB.
+            return TrainingProfile(rank: 16, numLayers: 12, iterations: 800, label: "rich")
+        }
+    }
+
     /// The MLX model to use for training (SmolLM2 in MLX format)
     private let trainingModelId = "mlx-community/SmolLM2-1.7B-Instruct-4bit"
     
@@ -482,9 +508,9 @@ class TrainingViewModel: ObservableObject {
             optimizer_config={"adam": {}, "adamw": {}, "muon": {}, "sgd": {}, "adafactor": {}},
             data="\(trainFile.deletingLastPathComponent().path)",
             seed=0,
-            num_layers=\(loraLayers),
+            num_layers=\(trainingProfile.numLayers),
             batch_size=\(batchSize),
-            iters=\(trainingIterations),
+            iters=\(trainingProfile.iterations),
             val_batches=25,
             learning_rate=\(learningRate),
             steps_per_report=10,
@@ -500,7 +526,7 @@ class TrainingViewModel: ObservableObject {
             grad_accumulation_steps=1,
             clear_cache_threshold=0,
             lr_schedule=None,
-            lora_parameters={"rank": 8, "dropout": 0.0, "scale": 20.0},
+            lora_parameters={"rank": \(trainingProfile.rank), "dropout": 0.0, "scale": 20.0},
             mask_prompt=False,
             report_to=None,
             project_name=None
@@ -535,9 +561,10 @@ class TrainingViewModel: ObservableObject {
                 if line.contains("Iter") {
                     iterationsSeen += 10
                     await MainActor.run {
-                        self.progress = min(0.93, 0.45 + (Double(iterationsSeen) / Double(self.trainingIterations)) * 0.48)
-                        self.stageDetail = "Iteration \(min(iterationsSeen, self.trainingIterations))/\(self.trainingIterations)"
-                        self.estimatedTimeRemaining = max(0, (self.trainingIterations - iterationsSeen) / 20)
+                        let totalIters = self.trainingProfile.iterations
+                        self.progress = min(0.93, 0.45 + (Double(iterationsSeen) / Double(totalIters)) * 0.48)
+                        self.stageDetail = "Iteration \(min(iterationsSeen, totalIters))/\(totalIters)"
+                        self.estimatedTimeRemaining = max(0, (totalIters - iterationsSeen) / 20)
                     }
                 }
                 if line.contains("Val loss") {
@@ -963,8 +990,9 @@ class TrainingViewModel: ObservableObject {
             "name": adapterName,
             "tags": tags,
             "base_model": "SmolLM2-1.7B-Instruct-Q4_K_M",
-            "rank": 8,
+            "rank": trainingProfile.rank,
             "size_mb": binaryData.count / (1024 * 1024),
+            "source_url": (sourceType == .rss ? (rssURL ?? "") : ""),
             "lat": 0.0,  // TODO: get user location
             "lng": 0.0,
             "binary": binaryB64
