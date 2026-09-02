@@ -97,6 +97,10 @@ class SpeechService: NSObject, AVSpeechSynthesizerDelegate {
     }
     
     private func enqueueSentence(_ text: String) {
+        // Re-assert the playback session — dictation (SpeechRecognizer) may have left
+        // the shared session in .record mode, which starves TTS of a playback buffer
+        // (the IPCAUClient / mDataByteSize(0) errors). Restore it before every utterance.
+        configureAudioSession()
         let utterance = AVSpeechUtterance(string: text)
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate
         utterance.pitchMultiplier = 1.0

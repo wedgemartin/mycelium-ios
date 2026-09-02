@@ -48,6 +48,17 @@ extension EnvironmentValues {
     }
 }
 
+#if os(macOS)
+/// Frees llama.cpp/Metal resources before the process exits, preventing the
+/// ggml_metal_device_free residency-set assert that hangs the app on Cmd-Q.
+final class MacAppDelegate: NSObject, NSApplicationDelegate {
+    static var engine: LlamaEngine?
+    func applicationWillTerminate(_ notification: Notification) {
+        MacAppDelegate.engine?.shutdown()
+    }
+}
+#endif
+
 @main
 struct MyceliumApp: App {
     @StateObject private var modelManager = ModelManager()
@@ -56,7 +67,11 @@ struct MyceliumApp: App {
     @State private var network = NetworkManager()
     @State private var peerManager = PeerManager()
     @State private var speechService = SpeechService()
-    
+
+    #if os(macOS)
+    @NSApplicationDelegateAdaptor(MacAppDelegate.self) private var appDelegate
+    #endif
+
     var body: some Scene {
         WindowGroup {
             RootView()
@@ -67,6 +82,9 @@ struct MyceliumApp: App {
                 .environment(\.peerManager, peerManager)
                 .environment(\.speechService, speechService)
                 .preferredColorScheme(.dark)
+                #if os(macOS)
+                .onAppear { MacAppDelegate.engine = engine }
+                #endif
         }
     }
 }

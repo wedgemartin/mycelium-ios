@@ -187,6 +187,34 @@ class LlamaEngine {
         print("llama: ✅ LoRA loaded and applied from \(path)")
     }
     
+    /// Explicitly release the model, context, and Metal-backed resources.
+    ///
+    /// MUST be called before the process exits. Otherwise ggml's static/global
+    /// destructor (ggml_metal_device_free) runs at __cxa_finalize while the context
+    /// still holds Metal residency sets, tripping:
+    ///   GGML_ASSERT([rsets->data count] == 0) failed
+    /// which hangs/crashes the app on Cmd-Q. Freeing context → model → backend here,
+    /// in order, releases the residency sets first so the device teardown is clean.
+    func shutdown() {
+        activeLoRAs.removeAll()
+        for adapter in loadedAdapters {
+            if let adapter { llama_adapter_lora_free(adapter) }
+        }
+        loadedAdapters.removeAll()
+        if let context {
+            llama_free(context)
+            self.context = nil
+        }
+        if let model {
+            llama_model_free(model)
+            self.model = nil
+        }
+        vocab = nil
+        llama_backend_free()
+        isLoaded = false
+        print("llama: shutdown complete — Metal resources released")
+    }
+
     func unloadLoRA(path: String) {
         guard let idx = activeLoRAs.firstIndex(of: path) else { return }
         let adapter = loadedAdapters[idx]
