@@ -43,6 +43,19 @@ class TrainingViewModel: ObservableObject {
     // Configuration
     @Published var adapterName = ""
     @Published var tagsString = ""
+    /// Optional manual location override for the adapter's region. When nil, the
+    /// device's current location (via LocationManager) is used. This records WHERE
+    /// the knowledge is about — not how far it propagates (that's reputation + adaptive geo).
+    @Published var manualLatitude: Double? = nil
+    @Published var manualLongitude: Double? = nil
+
+    /// Latitude to publish: manual override if set, else device location (0 if unknown).
+    var publishLatitude: Double {
+        manualLatitude ?? LocationManager.shared.latitude
+    }
+    var publishLongitude: Double {
+        manualLongitude ?? LocationManager.shared.longitude
+    }
     @Published var shareToNetwork = true
     @Published var acceptedTerms = false
     
@@ -106,7 +119,39 @@ class TrainingViewModel: ObservableObject {
         let trimmed = adapterName.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.count >= 3 && trimmed.lowercased() != "train" && !trimmed.hasPrefix("{")
     }
-    
+
+    /// Propose draft tags from the source content by frequency of meaningful terms.
+    /// This pre-fills the editable tags field so publishing is frictionless — the user
+    /// can add/remove afterward. Kept as a lightweight heuristic (no model dependency)
+    /// since it only needs to seed reasonable defaults, not be authoritative.
+    func suggestTags() {
+        // Only auto-fill if the user hasn't already entered tags.
+        guard tagsString.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        guard !sourceText.isEmpty else { return }
+
+        let stop: Set<String> = [
+            "the","and","for","are","but","not","you","all","any","can","her","was","one","our",
+            "out","day","get","has","him","his","how","man","new","now","old","see","two","way",
+            "who","boy","did","its","let","put","say","she","too","use","that","this","with","from",
+            "they","have","been","were","will","your","what","when","which","their","there","about",
+            "would","could","should","them","then","than","into","some","more","also","other","such",
+            "http","https","www","com","org","html","said","says"
+        ]
+        var counts: [String: Int] = [:]
+        let lowered = sourceText.lowercased()
+        let words = lowered.split { !$0.isLetter }
+        for w in words {
+            let word = String(w)
+            guard word.count >= 4, !stop.contains(word) else { continue }
+            counts[word, default: 0] += 1
+        }
+        // Top terms by frequency, capped at 6 draft tags.
+        let top = counts.sorted { $0.value > $1.value }.prefix(6).map { $0.key }
+        if !top.isEmpty {
+            tagsString = top.joined(separator: ", ")
+        }
+    }
+
     // MARK: - File Import
     
     func importFile(url: URL) {
@@ -126,6 +171,8 @@ class TrainingViewModel: ObservableObject {
     
     func analyzeSource() {
         isAnalyzing = true
+        // Kick off location resolution early so a fix is ready by publish time.
+        LocationManager.shared.requestAndUpdate()
         
         Task {
             if let rss = rssURL, !rss.isEmpty {
@@ -134,6 +181,7 @@ class TrainingViewModel: ObservableObject {
             
             await MainActor.run {
                 performQualityCheck()
+                suggestTags()   // pre-fill draft tags from the analyzed source
                 isAnalyzing = false
                 if qualityPassed || tokenCount > 0 {
                     step = .review
@@ -993,8 +1041,8 @@ class TrainingViewModel: ObservableObject {
             "rank": trainingProfile.rank,
             "size_mb": binaryData.count / (1024 * 1024),
             "source_url": (sourceType == .rss ? (rssURL ?? "") : ""),
-            "lat": 0.0,  // TODO: get user location
-            "lng": 0.0,
+            "lat": publishLatitude,
+            "lng": publishLongitude,
             "binary": binaryB64
         ]
         
