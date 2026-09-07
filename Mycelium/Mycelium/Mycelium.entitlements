@@ -10,5 +10,9 @@
     <true/>
     <key>com.apple.security.personal-information.location</key>
     <true/>
+    <key>keychain-access-groups</key>
+    <array>
+        <string>$(AppIdentifierPrefix)xyz.getspore.shared</string>
+    </array>
 </dict>
 </plist>

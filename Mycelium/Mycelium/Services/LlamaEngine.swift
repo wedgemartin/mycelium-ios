@@ -120,7 +120,11 @@ class LlamaEngine {
             // Generate tokens
             var nCur = pos
             let maxGenerate: Int32 = 512
-            
+            // Accumulates raw token bytes so multi-byte UTF-8 characters (e.g. emoji,
+            // accented letters) that the tokenizer splits across tokens are only decoded
+            // once complete — otherwise partial bytes render as ◆/� replacement glyphs.
+            var pendingBytes = [UInt8]()
+
             for _ in 0..<maxGenerate {
                 guard let logits = llama_get_logits_ith(context, batch.n_tokens - 1) else { break }
                 
@@ -141,12 +145,19 @@ class LlamaEngine {
                     break
                 }
                 
-                // Convert token to text
+                // Convert token to raw bytes and accumulate. A single token may be only
+                // part of a multi-byte UTF-8 character, so we buffer and emit the longest
+                // valid-UTF-8 prefix, keeping any trailing incomplete bytes for next token.
                 var buffer = [CChar](repeating: 0, count: 64)
                 let length = llama_token_to_piece(vocab, nextToken, &buffer, Int32(buffer.count), 0, false)
                 if length > 0 {
-                    let text = String(cString: buffer)
-                    onToken(text)
+                    for i in 0..<Int(length) {
+                        pendingBytes.append(UInt8(bitPattern: buffer[i]))
+                    }
+                    if let (decoded, remaining) = Self.decodeValidUTF8(pendingBytes), !decoded.isEmpty {
+                        pendingBytes = remaining
+                        onToken(decoded)
+                    }
                 }
                 
                 // Prepare next batch
@@ -168,6 +179,35 @@ class LlamaEngine {
         }.value
     }
     
+    /// Decodes the longest valid-UTF-8 prefix of `bytes`, returning the decoded string
+    /// and any trailing bytes that form an incomplete multi-byte sequence (to be
+    /// completed by subsequent tokens). Prevents split emoji/accented chars from
+    /// rendering as ◆/� replacement glyphs.
+    private static func decodeValidUTF8(_ bytes: [UInt8]) -> (decoded: String, remaining: [UInt8])? {
+        if bytes.isEmpty { return ("", []) }
+        // Fast path: the whole buffer is already valid UTF-8.
+        if let s = String(bytes: bytes, encoding: .utf8) {
+            return (s, [])
+        }
+        // Otherwise, find how many trailing bytes belong to an incomplete sequence.
+        // A UTF-8 char is at most 4 bytes; back off up to 3 bytes to find a valid split.
+        var splitAt = bytes.count
+        for backoff in 1...min(3, bytes.count) {
+            let candidate = Array(bytes[0..<(bytes.count - backoff)])
+            if candidate.isEmpty { break }
+            if String(bytes: candidate, encoding: .utf8) != nil {
+                splitAt = bytes.count - backoff
+                break
+            }
+        }
+        guard splitAt < bytes.count,
+              let decoded = String(bytes: bytes[0..<splitAt], encoding: .utf8) else {
+            // Couldn't find a clean split; keep buffering (return nil = emit nothing yet).
+            return nil
+        }
+        return (decoded, Array(bytes[splitAt...]))
+    }
+
     // Track loaded adapters
     private var loadedAdapters: [OpaquePointer?] = [] // llama_adapter_lora *
     

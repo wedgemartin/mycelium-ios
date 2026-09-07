@@ -86,6 +86,19 @@ struct SourcePickerView: View {
                 .padding(.horizontal)
                 .padding(.top, 8)
                 #endif
+                // Header — explains what this screen does (shows in App Store screenshot)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Train Your Own Knowledge Adapter")
+                        .font(.system(size: 22, weight: .bold, design: .serif))
+                        .foregroundColor(Color(red: 0.1, green: 0.1, blue: 0.1))
+                    Text("Choose your training data — an RSS feed, pasted text, or a file. Mycelium turns it into a LoRA adapter that runs privately on your device and can be shared with the network.")
+                        .font(.subheadline)
+                        .foregroundColor(Color(red: 0.45, green: 0.45, blue: 0.45))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+                .padding(.top, 8)
+
                 // Source type selector
                 Picker("Source", selection: $training.sourceType) {
                     Text("RSS Feed").tag(SourceType.rss)

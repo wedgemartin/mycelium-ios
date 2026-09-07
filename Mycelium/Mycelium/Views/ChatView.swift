@@ -161,7 +161,7 @@ struct ChatView: View {
                 LoRALibraryView()
             }
             .sheet(isPresented: $showActiveAdapters) {
-                ActiveAdaptersView()
+                ActiveAdaptersView(loraManager: loraManager)
             }
             .sheet(isPresented: $showTrainingWizard) {
                 #if os(macOS)
@@ -311,14 +311,16 @@ struct ChatView: View {
                         }
                     }
                 }
-                // Connect to Spore network for LoRA discovery
-                // TODO: Use real identity - for now use a temp address
-                let tempAddress = "spore1mycelium\(Int.random(in: 1000...9999))"
-                network.connect(address: tempAddress)
+                // Connect to Spore network using our persistent identity.
+                // IdentityManager auto-creates an anonymous Ed25519 identity on first use
+                // (shared with Spore via the keychain access group where available).
+                let myAddress = IdentityManager.shared.address ?? IdentityManager.shared.generate()
+                print("mycelium: 🪪 identity address = \(myAddress)")
+                network.connect(address: myAddress)
                 
                 // Start P2P peer discovery on local network
                 let installedHashes = loraManager.installed.map(\.hash)
-                peerManager.start(address: tempAddress, installedHashes: installedHashes)
+                peerManager.start(address: myAddress, installedHashes: installedHashes)
                 peerManager.onLoRAReceived = { hash, data in
                     if let lora = network.catalog.first(where: { $0.hash == hash }) {
                         loraManager.install(lora: lora, data: data)
